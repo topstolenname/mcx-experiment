@@ -331,6 +331,7 @@ def run_conditions(
     if not isinstance(base_proposal, dict):
         raise ScenarioError(f"{src}.proposal: expected an object")
     base_type = scenario.get("decision_type", "D2")
+    bundle_digest = _scenario_bundle(scenario).digest
     published = None
     if "published_policy" in scenario:
         w = f"{src}.published_policy"
@@ -366,6 +367,9 @@ def run_conditions(
         if not isinstance(proposal, dict):
             raise ScenarioError(f"{where}.proposal: expected an object")
         _require_expiry(proposal, f"{where}.proposal" if "proposal" in cond else f"{src}.proposal")
+        if "enforcement_bundle_hash" not in proposal:
+            # Decisions in a file are taken under the enforcement bundle the same file defines.
+            proposal = {**proposal, "enforcement_bundle_hash": bundle_digest}
         decision_type = _decision_type(cond.get("decision_type", base_type), where)
         decision_id = _str(cond.get("decision_id", name), f"{where}.decision_id")
 
@@ -464,7 +468,7 @@ ENFORCEMENT_KEYS = {
 CAPABILITY_KEYS = {"capability_id", "scope", "tool", "destinations", "allowed_recipients", "expires_at"}
 CAPABILITY_OPTIONAL = {
     "audience", "allowed_classifications", "allowed_fields", "transferable",
-    "parameter_schema", "policy_version",
+    "parameter_schema", "policy_version", "enforcement_bundle_hash",
 }
 REQUEST_KEYS = {"presenter", "capability_id", "tool", "destination", "recipient", "fields"}
 STEP_OPTIONAL = REQUEST_KEYS | {"name", "label", "action", "between_check_and_effect", "expect", "attenuate",
@@ -495,7 +499,32 @@ class StepResult:
         }
 
 
-def _capability(raw: dict, where: str, audience: str) -> Capability:
+def _bundle(spec: dict, where: str) -> EnforcementBundle:
+    schemas = (TICKET_SCHEMA,)
+    if "schemas" in spec:
+        try:
+            schemas = tuple(ParameterSchema.from_dict(_plain(s, f"{where}.schemas")) for s in spec["schemas"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ScenarioError(f"{where}.schemas: {exc}") from exc
+    sanctions = spec.get("sanctions", {})
+    if not isinstance(sanctions, dict):
+        raise ScenarioError(f"{where}.sanctions: expected an object of reason -> level")
+    return EnforcementBundle(
+        version=_str(spec.get("bundle_version", "eb-1"), f"{where}.bundle_version"),
+        schemas=schemas,
+        sanctions=tuple(sorted((str(k), _str(v, f"{where}.sanctions.{k}")) for k, v in sanctions.items())),
+    )
+
+
+def _scenario_bundle(scenario: dict) -> EnforcementBundle:
+    """The enforcement bundle a file defines, or the default bundle if it has no enforcement section."""
+    spec = scenario.get("enforcement")
+    if not isinstance(spec, dict):
+        return EnforcementBundle()
+    return _bundle(spec, f"{scenario.get('_source', 'scenario')}.enforcement")
+
+
+def _capability(raw: dict, where: str, audience: str, bundle_digest: str) -> Capability:
     _keys(raw, where, CAPABILITY_KEYS, CAPABILITY_OPTIONAL)
     extra = {}
     if "allowed_classifications" in raw:
@@ -513,6 +542,7 @@ def _capability(raw: dict, where: str, audience: str) -> Capability:
         parameter_schema=_str(raw.get("parameter_schema", TICKET_SCHEMA.schema_id), f"{where}.parameter_schema"),
         policy_version=_str(raw.get("policy_version", "cm-v1"), f"{where}.policy_version"),
         expires_at=_number(raw["expires_at"], f"{where}.expires_at"),
+        enforcement_bundle_hash=_str(raw.get("enforcement_bundle_hash", bundle_digest), f"{where}.enforcement_bundle_hash"),
         **extra,
     )
 
@@ -526,20 +556,7 @@ def run_enforcement(scenario: dict) -> tuple[Optional[Enforcer], list[StepResult
     _keys(spec, where, {"capabilities", "steps"}, ENFORCEMENT_KEYS)
     clock = {"now": _number(spec.get("now", 0), f"{where}.now")}
     audience = _str(spec.get("audience", DEFAULT_AUDIENCE), f"{where}.audience")
-    schemas = (TICKET_SCHEMA,)
-    if "schemas" in spec:
-        try:
-            schemas = tuple(ParameterSchema.from_dict(_plain(s, f"{where}.schemas")) for s in spec["schemas"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ScenarioError(f"{where}.schemas: {exc}") from exc
-    sanctions = spec.get("sanctions", {})
-    if not isinstance(sanctions, dict):
-        raise ScenarioError(f"{where}.sanctions: expected an object of reason -> level")
-    bundle = EnforcementBundle(
-        version=_str(spec.get("bundle_version", "eb-1"), f"{where}.bundle_version"),
-        schemas=schemas,
-        sanctions=tuple(sorted((str(k), _str(v, f"{where}.sanctions.{k}")) for k, v in sanctions.items())),
-    )
+    bundle = _bundle(spec, where)
     constraints_raw = spec.get("constraints", {})
     _keys(constraints_raw, f"{where}.constraints", set(), {"version", "forbidden_destinations", "forbidden_recipients"})
     constraints = ConstraintSet(
@@ -551,7 +568,7 @@ def run_enforcement(scenario: dict) -> tuple[Optional[Enforcer], list[StepResult
     if not isinstance(spec["capabilities"], list):
         raise ScenarioError(f"{where}.capabilities: expected a list")
     for i, raw in enumerate(spec["capabilities"]):
-        enforcer.grant(_capability(raw, f"{where}.capabilities[{i}]", audience))
+        enforcer.grant(_capability(raw, f"{where}.capabilities[{i}]", audience, bundle.digest))
     defaults = spec.get("request_defaults", {})
     _keys(defaults, f"{where}.request_defaults", set(), REQUEST_KEYS)
     if not isinstance(spec["steps"], list):

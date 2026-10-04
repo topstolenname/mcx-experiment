@@ -66,13 +66,13 @@ No Python changes are needed. The runner rejects unknown keys and names the plac
 | Key | Meaning |
 | --- | --- |
 | `mcx_scenario` | Format version. Must be `1`. |
-| `proposal`, `decision_type` | The payload voters sign over, and D1 to D4. The proposal must carry `expires_at`, a positive integer in Unix seconds; there is no default, and a file without it is malformed (exit 2). An issued capability expires then. |
+| `proposal`, `decision_type` | The payload voters sign over, and D1 to D4. The proposal must carry `expires_at`, a positive integer in Unix seconds; there is no default, and a file without it is malformed (exit 2). An issued capability expires then. The proposal also names the enforcement bundle it is decided under as `enforcement_bundle_hash`; if the file does not give one, the runner fills in the digest of the bundle the same file's `enforcement` section defines (or the default bundle). |
 | `electorates` | Named snapshots. Either a domain map, `{"human": ["h1"], "agent": ["a1", "a2"]}`, or a list of `{"voter_id", "domain", "eligible"}`. |
 | `rules` | Named rules: `threshold` (`"2/3"`, `"0.75"`, or a JSON number, read exactly), `required_domains`, and `require_domain_assent`. |
 | `published_policy` | `{"electorate": ..., "rule": ...}`. Each package is also verified against it. Optional. |
 | `conditions[]` | `name`, `electorate`, `rule`, and ballots as `approve` and `reject` lists of voter ids, or a `ballots` list of `{"voter", "approve", "sequence", "domain", "cast_on"}`. A ballot from outside the electorate needs a `domain`. `amend` changes proposal fields after ballots marked `"cast_on": "original"` were cast. |
 | `conditions[].expect` | Any of `approved`, `reason`, `approvals`, `electorate_size`, `voided_voters`, `missing_domains`, `verified`, `matches_published_policy`. |
-| `enforcement` | `capabilities`, `request_defaults`, and `steps`. Each capability needs `expires_at` (there is no default lifetime). A step is `commit` (default), `check`, `attenuate`, `revoke`, or `advance_clock`; a commit can take `between_check_and_effect: {"revoke": id}` or `{"advance_clock": seconds}`. Optional `constraints`, `sanctions`, `schemas`, `audience`, and `now`. |
+| `enforcement` | `capabilities`, `request_defaults`, and `steps`. Each capability needs `expires_at` (there is no default lifetime) and is bound to the file's bundle unless it names an `enforcement_bundle_hash`. A step is `commit` (default), `check`, `attenuate`, `revoke`, or `advance_clock`; a commit can take `between_check_and_effect: {"revoke": id}` or `{"advance_clock": seconds}`. Optional `constraints`, `sanctions`, `schemas`, `audience`, and `now`. |
 
 More output:
 

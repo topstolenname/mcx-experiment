@@ -9,11 +9,13 @@ from fractions import Fraction
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.enforcer import Enforcer
+from mcx_experiment.enforcer import EnforcementBundle, Enforcer
 from mcx_experiment.evidence import build_package
 from mcx_experiment.issue import issue
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate
 from mcx_experiment.verifier import policy_hash, verify_package
+
+BUNDLE = EnforcementBundle().digest
 
 VOTERS = (
     Voter("human-1", "human"),
@@ -26,6 +28,7 @@ PROPOSAL = {
     "scope": "alpha",
     "destination": "https://uploads.example",
     "expires_at": 4600,
+    "enforcement_bundle_hash": BUNDLE,
 }
 MCX = Snapshot("d2", DecisionType.D2, PROPOSAL, VOTERS, ("human", "infrastructure", "agent"), Fraction(2, 3), True)
 

@@ -6,7 +6,15 @@ from fractions import Fraction
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, Enforcer
+from mcx_experiment.enforcer import (
+    DEFAULT_AUDIENCE,
+    TICKET_SCHEMA,
+    Capability,
+    EnforcementBundle,
+    Enforcer,
+    FieldSpec,
+    ParameterSchema,
+)
 from mcx_experiment.evidence import build_package, sign_ballot
 from mcx_experiment.issue import issue
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate
@@ -14,6 +22,20 @@ from mcx_experiment.verifier import verify_package, verify_receipt
 
 NOW = 1_000.0
 EXPIRES_AT = 4_600
+BUNDLE = EnforcementBundle().digest
+# The same ticket schema with the body bound raised a hundredfold: an operator edit in place.
+LOOSE_BUNDLE = EnforcementBundle(
+    version="eb-1-loose",
+    schemas=(
+        ParameterSchema(
+            schema_id=TICKET_SCHEMA.schema_id,
+            fields=tuple(
+                (name, FieldSpec(spec.reason, max_length=200_000) if name == "body" else spec)
+                for name, spec in TICKET_SCHEMA.fields
+            ),
+        ),
+    ),
+)
 
 
 def _clock() -> float:
@@ -40,6 +62,7 @@ def _snap(voters: list[Voter], domains: tuple[str, ...], assent: bool) -> Snapsh
             "scope": "alpha",
             "destination": "https://uploads.example",
             "expires_at": EXPIRES_AT,
+            "enforcement_bundle_hash": BUNDLE,
         },
         tuple(voters),
         domains,
@@ -94,7 +117,10 @@ def run_catalog() -> list[dict]:
     open_minted = issue(open_package, publics, recorder.public_key(), open_gate, "cap-open", policy=open_ended.policy())
     unexpiring = Enforcer(clock=_clock)
     unexpiring.grant(
-        Capability("cap-u", "alpha", DEFAULT_AUDIENCE, "ticket.create", ("https://uploads.example",), ("ops@example.com",))
+        Capability(
+            "cap-u", "alpha", DEFAULT_AUDIENCE, "ticket.create", ("https://uploads.example",), ("ops@example.com",),
+            enforcement_bundle_hash=BUNDLE,
+        )
     )
     # RT-19: human-1's key signs approve and reject at one sequence, then approve at a
     # higher one. Under a "last ballot wins" reading this would complete domain assent.
@@ -109,6 +135,10 @@ def run_catalog() -> list[dict]:
     equivocation = evaluate(domain, equivocating)
     equivocation_package = build_package(domain, equivocating, keys, {"installed": False}, recorder)
     equivocation_report = verify_package(equivocation_package, publics, recorder.public_key())
+    # RT-21: an approved package names the default bundle; the issuer's enforcer runs the loose one.
+    loose_gate = Enforcer(clock=_clock, bundle=LOOSE_BUNDLE)
+    cross_minted = issue(honest, publics, recorder.public_key(), loose_gate, "cap-x", policy=published)
+    cross_report = verify_package(honest, publics, recorder.public_key(), bundle_hash=LOOSE_BUNDLE.digest)
     admin_snap = Snapshot(
         "d2", DecisionType.D2, domain.proposal, (Voter("admin-1", "admin"),), (), Fraction(2, 3), False
     )
@@ -137,6 +167,7 @@ def run_catalog() -> list[dict]:
                 ("https://uploads.example",),
                 ("ops@example.com",),
                 expires_at=EXPIRES_AT,
+            enforcement_bundle_hash=BUNDLE,
             )
         },
         clock=_clock,
@@ -181,6 +212,7 @@ def run_catalog() -> list[dict]:
         Capability(
             "cap-t", "alpha", DEFAULT_AUDIENCE, "ticket.create",
             ("https://uploads.example",), ("ops@example.com",), expires_at=1_001.0,
+            enforcement_bundle_hash=BUNDLE,
         )
     )
     expired = timed.commit(
@@ -197,6 +229,7 @@ def run_catalog() -> list[dict]:
         Capability(
             "cap-p", "alpha", DEFAULT_AUDIENCE, "ticket.create", ("https://uploads.example",), ("ops@example.com",),
             expires_at=EXPIRES_AT,
+            enforcement_bundle_hash=BUNDLE,
         )
     )
     chain.attenuate("cap-p", presenter="alpha", child_id="cap-c", child_scope="alpha/child")
@@ -220,6 +253,7 @@ def run_catalog() -> list[dict]:
             ("https://uploads.example",),
             ("ops@example.com",),
             expires_at=EXPIRES_AT,
+            enforcement_bundle_hash=BUNDLE,
         )
     )
     wrong_audience = foreign.check(
@@ -238,6 +272,20 @@ def run_catalog() -> list[dict]:
         recipient="ops@example.com",
         fields=fields,
     )
+    # RT-22: a capability minted under the default bundle; the bundle is swapped in place,
+    # once between check and effect, and once before a fresh request with an oversized body.
+    swapped = Enforcer(clock=_clock)
+    swap_cap = issue(honest, publics, recorder.public_key(), swapped, "cap-s", policy=published)
+    swap_request = dict(
+        presenter="alpha",
+        capability_id="cap-s",
+        tool="ticket.create",
+        destination="https://uploads.example",
+        recipient="ops@example.com",
+        fields=fields,
+    )
+    swap_raced = swapped.commit(**swap_request, before_commit=lambda: swapped.install_bundle(LOOSE_BUNDLE))
+    swap_later = swapped.commit(**{**swap_request, "fields": {**fields, "body": "x" * 5_000}})
     return [
         {"id": "RT-1", "ok": (not domain_result.approved) and domain_result.reason == "domain_assent_failed"},
         {"id": "RT-2", "ok": flat_result.approved},
@@ -276,6 +324,20 @@ def run_catalog() -> list[dict]:
             and open_gate.capabilities == {}
             and unexpiring_receipt.reason == "capability_expiry_missing"
             and unexpiring.ledger == [],
+        },
+        {
+            "id": "RT-21",
+            "ok": cross_minted is None
+            and loose_gate.capabilities == {}
+            and "bundle_hash_mismatch" in cross_report["errors"],
+        },
+        {
+            "id": "RT-22",
+            "ok": swap_cap is not None
+            and swap_cap.enforcement_bundle_hash == BUNDLE
+            and swap_raced.reason == "enforcement_bundle_mismatch"
+            and swap_later.reason == "enforcement_bundle_mismatch"
+            and swapped.ledger == [],
         },
         {"id": "RT-honest", "ok": verify_package(honest, publics, recorder.public_key())["valid"]},
     ]

@@ -9,15 +9,18 @@ import itertools
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from mcx_experiment.enforcer import EnforcementBundle
 from mcx_experiment.evidence import build_package
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate
 from mcx_experiment.verifier import verify_package
+
+BUNDLE = EnforcementBundle().digest
 
 VOTERS = (Voter("h1", "human"), Voter("i1", "infra"), Voter("a1", "agent"))
 
 
 def _snap(voters=VOTERS):
-    return Snapshot("d", DecisionType.D2, {"x": 1, "expires_at": 4600}, voters, ("human", "infra", "agent"), Fraction(2, 3), True)
+    return Snapshot("d", DecisionType.D2, {"x": 1, "expires_at": 4600, "enforcement_bundle_hash": BUNDLE}, voters, ("human", "infra", "agent"), Fraction(2, 3), True)
 
 
 def _verify(snap, ballots):

@@ -52,6 +52,7 @@ def _cap(**overrides) -> Capability:
         destinations=("https://tickets.example",),
         allowed_recipients=("ops@example.com", "sec@example.com"),
         expires_at=2_000.0,
+        enforcement_bundle_hash=EnforcementBundle().digest,
     )
     values.update(overrides)
     return Capability(**values)
@@ -59,7 +60,7 @@ def _cap(**overrides) -> Capability:
 
 def _gate(clock=None, **kwargs) -> Enforcer:
     gate = Enforcer(clock=clock or Clock(), **kwargs)
-    gate.grant(_cap())
+    gate.grant(_cap(enforcement_bundle_hash=gate.bundle.digest))
     return gate
 
 

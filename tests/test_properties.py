@@ -15,11 +15,13 @@ from fractions import Fraction
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, Enforcer
+from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, EnforcementBundle, Enforcer
 from mcx_experiment.evidence import build_package
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate
 from mcx_experiment.scenario import run_conditions
 from mcx_experiment.verifier import content_hash, verify_package, verify_receipt
+
+BUNDLE = EnforcementBundle().digest
 
 SEEDS = (20261004, 7, 15_4)
 CASES = 120
@@ -53,6 +55,7 @@ def random_snapshot(rng: random.Random, assent: bool | None = None) -> Snapshot:
             "action": rng.choice(["grant", "restrict", "revoke"]),
             "n": rng.randrange(1000),
             "expires_at": rng.randint(1, 10**10),
+            "enforcement_bundle_hash": BUNDLE,
         },
         electorate=voters,
         required_domains=tuple(required),
@@ -351,6 +354,7 @@ def test_enforcer_allows_exactly_the_requests_the_capability_permits(seed):
             tuple(rng.sample(recipients[:2], rng.randint(1, 2))),
             allowed_classifications=tuple(rng.sample(["public", "internal"], rng.randint(1, 2))),
             expires_at=10.0,
+            enforcement_bundle_hash=BUNDLE,
         )
         gate = Enforcer(clock=lambda: 1.0)
         gate.grant(cap)

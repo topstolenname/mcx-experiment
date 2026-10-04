@@ -5,11 +5,13 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from fractions import Fraction
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 MIN_REQUIRED_DOMAINS = 2
+_BUNDLE_HASH = re.compile(r"sha256:[0-9a-f]{64}")
 
 
 def canonical(payload: dict) -> bytes:
@@ -186,11 +188,18 @@ def verify_package(
     public_keys: dict[str, Ed25519PublicKey],
     recorder_key: Ed25519PublicKey,
     policy: dict | None = None,
+    *,
+    bundle_hash: str | None = None,
 ) -> dict:
     """Recompute a package. Fails closed on any malformed field.
 
     The proposal must carry an explicit expiry, ``expires_at`` (a positive
     integer, Unix seconds). There is no default; a proposal without one fails.
+    It must also name the enforcement bundle it is decided under,
+    ``enforcement_bundle_hash`` ("sha256:" and 64 hex digits). Both are in the
+    proposal hash every voter signs. ``bundle_hash``, if given, is a bundle
+    digest the caller obtained independently (for example the enforcer's
+    active bundle); a package naming another bundle then fails.
 
     Without ``policy`` the check is self-consistency: the electorate, required
     domains, and threshold are read from the package being checked, so a
@@ -198,7 +207,7 @@ def verify_package(
     (an independently published rule) those inputs must also match it.
     """
     try:
-        return _verify(package, public_keys, recorder_key, policy)
+        return _verify(package, public_keys, recorder_key, policy, bundle_hash)
     except (KeyError, TypeError, AttributeError, ValueError) as exc:
         return {
             "valid": False,
@@ -215,6 +224,7 @@ def _verify(
     public_keys: dict[str, Ed25519PublicKey],
     recorder_key: Ed25519PublicKey,
     policy: dict | None,
+    bundle_hash: str | None = None,
 ) -> dict:
     errors = []
     for index, voter in enumerate(package["electorate"]):
@@ -233,6 +243,13 @@ def _verify(
         errors.append("proposal_expiry_missing")
     elif not _positive_int(proposal["expires_at"]):
         errors.append("proposal_expiry_malformed")
+    named_bundle = proposal.get("enforcement_bundle_hash")
+    if "enforcement_bundle_hash" not in proposal:
+        errors.append("proposal_bundle_hash_missing")
+    elif not isinstance(named_bundle, str) or not _BUNDLE_HASH.fullmatch(named_bundle):
+        errors.append("proposal_bundle_hash_malformed")
+    if bundle_hash is not None and named_bundle != bundle_hash:
+        errors.append("bundle_hash_mismatch")
     expected_hash = content_hash(
         {
             "decision_id": package["decision_id"],

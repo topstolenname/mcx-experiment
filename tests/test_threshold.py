@@ -8,6 +8,7 @@ from fractions import Fraction
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from mcx_experiment.enforcer import EnforcementBundle
 from mcx_experiment.evidence import build_package
 from mcx_experiment.protocol import (
     Ballot,
@@ -20,6 +21,8 @@ from mcx_experiment.protocol import (
     threshold_text,
 )
 from mcx_experiment.verifier import verify_package
+
+BUNDLE = EnforcementBundle().digest
 
 
 def test_float_threshold_is_rejected():
@@ -51,7 +54,7 @@ def test_threshold_is_not_rounded_toward_a_nearby_simple_fraction():
 
 def test_package_threshold_is_a_canonical_string_and_tampering_is_caught():
     voters = (Voter("h1", "human"), Voter("i1", "infra"))
-    snap = Snapshot("d", DecisionType.D2, {"x": 1, "expires_at": 4600}, voters, ("human", "infra"), "2/3", True)
+    snap = Snapshot("d", DecisionType.D2, {"x": 1, "expires_at": 4600, "enforcement_bundle_hash": BUNDLE}, voters, ("human", "infra"), "2/3", True)
     keys = {v.voter_id: Ed25519PrivateKey.generate() for v in voters}
     recorder = Ed25519PrivateKey.generate()
     ballots = [Ballot(v.voter_id, v.domain, True, snap.proposal_hash) for v in voters]

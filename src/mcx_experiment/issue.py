@@ -27,10 +27,14 @@ def issue(
     The capability expires at the proposal's ``expires_at``. There is no
     default lifetime: a proposal without an explicit expiry, or one already
     past it at minting time, mints nothing.
+
+    The proposal must name the enforcer's active enforcement bundle. The
+    capability is bound to that bundle and stops working if the enforcer's
+    bundle changes.
     """
     if policy is None:
         return None
-    report = verify_package(package, voter_keys, recorder_key, policy=policy)
+    report = verify_package(package, voter_keys, recorder_key, policy=policy, bundle_hash=enforcer.bundle.digest)
     if not report["valid"] or not package["verdict"]["approved"]:
         return None
     proposal = package["proposal"]
@@ -50,6 +54,7 @@ def issue(
         destinations=(proposal["destination"],),
         allowed_recipients=("ops@example.com",),
         allowed_classifications=("public",),
+        enforcement_bundle_hash=proposal["enforcement_bundle_hash"],
     )
     enforcer.grant(capability)
     return capability

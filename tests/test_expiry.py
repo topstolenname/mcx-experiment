@@ -9,15 +9,22 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from mcx_experiment import issue as issue_module
-from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, Enforcer
+from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, EnforcementBundle, Enforcer
 from mcx_experiment.evidence import build_package
 from mcx_experiment.issue import issue
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate
 from mcx_experiment.scenario import ScenarioError, main, run
 
+BUNDLE = EnforcementBundle().digest
+
 VOTERS = (Voter("human-1", "human"), Voter("infra-1", "infrastructure"), Voter("agent-1", "agent"))
 REQUIRED = ("human", "infrastructure", "agent")
-BASE = {"action": "grant_network_egress", "scope": "alpha", "destination": "https://uploads.example"}
+BASE = {
+    "action": "grant_network_egress",
+    "scope": "alpha",
+    "destination": "https://uploads.example",
+    "enforcement_bundle_hash": BUNDLE,
+}
 
 
 def _approved(proposal):
@@ -72,7 +79,8 @@ def test_proposal_already_past_its_expiry_mints_nothing():
 
 def _cap(**overrides):
     values = dict(capability_id="cap", scope="alpha", audience=DEFAULT_AUDIENCE, tool="ticket.create",
-                  destinations=("https://tickets.example",), allowed_recipients=("ops@example.com",))
+                  destinations=("https://tickets.example",), allowed_recipients=("ops@example.com",),
+                  enforcement_bundle_hash=BUNDLE)
     values.update(overrides)
     return Capability(**values)
 

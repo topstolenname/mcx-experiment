@@ -2,9 +2,12 @@
 
 The effect-time check and the ledger append share a lock with revoke().
 Capabilities carry an expiry and an audience; the audience names this
-enforcer, not the presenter. A capability without an expiry is denied. Parameter schemas, sanction levels, and the
-constraint set are data in an enforcement bundle whose hash, with the
-manifest hash, goes into every signed receipt. Missing policy denies.
+enforcer, not the presenter. A capability without an expiry is denied.
+Parameter schemas, sanction levels, and the constraint set are data in an
+enforcement bundle whose hash, with the manifest hash, goes into every
+signed receipt. Each capability names the bundle it was approved under and
+is denied, at check and at effect time, if this enforcer's active bundle
+differs. Missing policy denies.
 
 This is an in-process reference. It is not a resource broker, and the agent
 it guards could reach the ledger around it.
@@ -219,6 +222,7 @@ class Capability:
     parent_id: Optional[str] = None
     parameter_schema: str = DEFAULT_SCHEMA
     policy_version: str = "cm-v1"
+    enforcement_bundle_hash: Optional[str] = None
 
     def manifest(self) -> dict:
         """Everything that defines the grant. Revocation state is not part of it."""
@@ -236,6 +240,7 @@ class Capability:
             "parent_id": self.parent_id,
             "parameter_schema": self.parameter_schema,
             "policy_version": self.policy_version,
+            "enforcement_bundle_hash": self.enforcement_bundle_hash,
         }
 
     @property
@@ -326,6 +331,19 @@ class Enforcer:
             self.capabilities[capability.capability_id] = capability
             self._generation[capability.capability_id] = self._generation.get(capability.capability_id, 0) + 1
 
+    def install_bundle(self, bundle: EnforcementBundle) -> None:
+        """Replace the active enforcement bundle. Capabilities bound to the old bundle stop working."""
+        with self._lock:
+            self.bundle = bundle
+
+    def _bundle_problem(self, chain: list[Capability]) -> Optional[str]:
+        """Every capability names the bundle it was approved under; it acts only under that bundle."""
+        if any(c.enforcement_bundle_hash is None for c in chain):
+            return "capability_bundle_unbound"
+        if any(c.enforcement_bundle_hash != self.bundle.digest for c in chain):
+            return "enforcement_bundle_mismatch"
+        return None
+
     def revoke(self, capability_id: str) -> bool:
         with self._lock:
             cap = self.capabilities.get(capability_id)
@@ -371,6 +389,9 @@ class Enforcer:
                 return None, missing
             if any(now >= c.expires_at for c in chain):
                 return None, "capability_expired"
+            unbound = self._bundle_problem(chain)
+            if unbound is not None:
+                return None, unbound
             if presenter != parent.scope:
                 return None, "delegation_not_attenuated"
             if child_id in self.capabilities:
@@ -403,6 +424,7 @@ class Enforcer:
                 parent_id=parent.capability_id,
                 parameter_schema=parent.parameter_schema,
                 policy_version=parent.policy_version,
+                enforcement_bundle_hash=parent.enforcement_bundle_hash,
                 **narrowed,
             )
             self.grant(child)
@@ -478,6 +500,10 @@ class Enforcer:
             return receipt
         if any(now >= c.expires_at for c in chain):
             receipt.reason = "capability_expired"
+            return receipt
+        unbound = self._bundle_problem(chain)
+        if unbound is not None:
+            receipt.reason = unbound
             return receipt
         if not cap.transferable and presenter != cap.scope:
             receipt.reason = "delegation_not_attenuated"

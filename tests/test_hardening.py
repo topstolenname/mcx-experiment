@@ -6,10 +6,12 @@ from fractions import Fraction
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, Enforcer
+from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, EnforcementBundle, Enforcer
 from mcx_experiment.evidence import build_package, sign_ballot
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate, meets_threshold
 from mcx_experiment.verifier import verify_package
+
+BUNDLE = EnforcementBundle().digest
 
 DOMAINS = ("human", "agent", "infra")
 
@@ -22,7 +24,7 @@ def _snapshot(required=DOMAINS, assent=True):
     return Snapshot(
         decision_id="d-test",
         decision_type=DecisionType.D2,
-        proposal={"grant": "egress", "expires_at": 4600},
+        proposal={"grant": "egress", "expires_at": 4600, "enforcement_bundle_hash": BUNDLE},
         electorate=_electorate(),
         required_domains=tuple(required),
         threshold=Fraction(2, 3),
@@ -113,6 +115,7 @@ def _enforcer():
         destinations=("tickets.example",),
         allowed_recipients=("ok@example.com",),
         expires_at=4600,
+        enforcement_bundle_hash=BUNDLE,
     )
     return Enforcer(capabilities={"c1": cap}, clock=lambda: 1000.0)
 

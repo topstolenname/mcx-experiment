@@ -14,9 +14,12 @@ from fractions import Fraction
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from mcx_experiment.enforcer import EnforcementBundle
 from mcx_experiment.evidence import build_package
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate
 from mcx_experiment.verifier import verify_package
+
+BUNDLE = EnforcementBundle().digest
 
 SHARED = (
     Voter("human-1", "human"),
@@ -32,7 +35,7 @@ APPROVERS = ("human-1", "infra-1", "agent-1", "agent-2")
 
 
 def _snap(voters, proposal=None):
-    return Snapshot("d2", DecisionType.D2, proposal or {"action": "grant", "expires_at": 4600}, voters, REQUIRED, Fraction(2, 3), True)
+    return Snapshot("d2", DecisionType.D2, proposal or {"action": "grant", "expires_at": 4600, "enforcement_bundle_hash": BUNDLE}, voters, REQUIRED, Fraction(2, 3), True)
 
 
 def _approve(snap, ids):
