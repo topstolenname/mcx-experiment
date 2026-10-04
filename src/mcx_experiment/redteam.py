@@ -68,9 +68,27 @@ def run_catalog() -> list[dict]:
     publics = {k: v.public_key() for k, v in keys.items()}
     forged_report = verify_package(forged, publics, recorder.public_key())
     denied = build_package(domain, coalition, keys, {"installed": False}, recorder)
+    published = domain.policy()
     enforcer = Enforcer()
-    minted = issue(denied, publics, recorder.public_key(), enforcer, "cap")
-    issued = issue(honest, publics, recorder.public_key(), Enforcer(), "cap-ok")
+    minted = issue(denied, publics, recorder.public_key(), enforcer, "cap", policy=published)
+    issued = issue(honest, publics, recorder.public_key(), Enforcer(), "cap-ok", policy=published)
+    admin_snap = Snapshot(
+        "d2", DecisionType.D2, domain.proposal, (Voter("admin-1", "admin"),), (), Fraction(2, 3), False
+    )
+    admin_keys = {"admin-1": Ed25519PrivateKey.generate()}
+    admin_package = build_package(
+        admin_snap,
+        [Ballot("admin-1", "admin", True, admin_snap.proposal_hash)],
+        admin_keys,
+        {"installed": True},
+        recorder,
+    )
+    admin_publics = {"admin-1": admin_keys["admin-1"].public_key()}
+    admin_self_consistent = verify_package(admin_package, admin_publics, recorder.public_key())["valid"]
+    baseline_gate = Enforcer()
+    baseline_minted = issue(
+        admin_package, admin_publics, recorder.public_key(), baseline_gate, "cap-admin", policy=published
+    )
 
     gate = Enforcer(
         capabilities={
@@ -128,6 +146,10 @@ def run_catalog() -> list[dict]:
         {"id": "RT-7", "ok": (not forged_report["valid"]) and (not forged_report["recomputed_approved"])},
         {"id": "RT-8", "ok": minted is None and enforcer.capabilities == {}},
         {"id": "RT-13", "ok": issued is not None and issued.scope == "alpha"},
+        {
+            "id": "RT-14",
+            "ok": admin_self_consistent and baseline_minted is None and baseline_gate.capabilities == {},
+        },
         {"id": "RT-9", "ok": child.reason == "delegation_not_attenuated"},
         {"id": "RT-10", "ok": mismatch.reason == "param_recipient_mismatch"},
         {"id": "RT-11", "ok": restricted.reason == "param_classification_not_allowed"},

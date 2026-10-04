@@ -14,8 +14,19 @@ def issue(
     recorder_key: Ed25519PublicKey,
     enforcer: Enforcer,
     capability_id: str,
+    *,
+    policy: dict,
 ) -> Capability | None:
-    report = verify_package(package, voter_keys, recorder_key)
+    """Mint only if the package verifies against the independently published ``policy``.
+
+    The policy is required. Without it the verifier reads the electorate,
+    required domains, and threshold from the package itself, so a package
+    decided under a weaker rule (for example the centralized baseline) would
+    verify and mint.
+    """
+    if policy is None:
+        return None
+    report = verify_package(package, voter_keys, recorder_key, policy=policy)
     if not report["valid"] or not package["verdict"]["approved"]:
         return None
     proposal = package["proposal"]

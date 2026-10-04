@@ -21,6 +21,7 @@ The second command exits non-zero if any catalogued attack is approved or commit
 | RT-7 | Signature on an otherwise approving package replaced | invalid, recount not approved |
 | RT-8 | Denied package presented for issuance | no capability |
 | RT-13 | Verified approval presented for issuance | capability minted |
+| RT-14 | Centralized-baseline package, valid on its own terms, presented to an issuer pinned to the published MCX policy | no capability |
 | RT-9 | Child presents parent capability | deny |
 | RT-10 | Recipient argument differs from payload | deny |
 | RT-11 | Restricted classification | deny |

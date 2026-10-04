@@ -132,6 +132,19 @@ class Snapshot:
             }
         )
 
+    def policy(self) -> dict:
+        """The rule this snapshot decides under, in the form a verifier can pin against."""
+        return {
+            "decision_type": self.decision_type.value,
+            "electorate": [
+                {"voter_id": v.voter_id, "domain": v.domain, "eligible": v.eligible}
+                for v in self.electorate
+            ],
+            "required_domains": list(self.required_domains),
+            "threshold": threshold_text(self.threshold),
+            "require_domain_assent": self.require_domain_assent,
+        }
+
     @property
     def eligible(self) -> tuple[Voter, ...]:
         return tuple(v for v in self.electorate if v.eligible)

@@ -22,11 +22,13 @@ A voter absent from the snapshot cannot be added to it. Changing the proposal ch
 
 ## Evidence
 
-Each ballot is signed by that voter's key over the canonical ballot. The package hash covers every field except the hash and the recorder signature. The recorder signs the package hash. The verifier recounts with its own encoder. A bad signature is excluded from the recount. `effect.installed` must equal the recorded verdict. A package is valid only if every check passes.
+Each ballot is signed by that voter's key over the canonical ballot. The package hash covers every field except the hash and the recorder signature. The recorder signs the package hash. The verifier recounts with its own encoder. A bad signature is excluded from the recount. `effect.installed` must equal the recorded verdict. A package is valid only if every check passes. Every field is type-checked; a malformed package or ballot fails verification instead of raising.
+
+Without a published policy, verification is self-consistency only: the electorate, required domains, threshold, and domain-assent flag are read from the package under check, so a package decided under a weaker rule can verify. A verifier given an independently published policy also requires those inputs, and the decision type if the policy names one, to equal it. The comparison ignores listing order.
 
 ## Issuance and commit
 
-A capability may be minted only from a package that verifies and whose verdict is approved. The minted scope and destination must equal the proposal. Presentation by any other subject is denied. The recipient argument must equal the recipient field. Classification must be in the capability allowlist. Title and body must be non-empty, printable, and within length bounds.
+A capability may be minted only from a package that verifies against the published policy and whose verdict is approved. The issuer refuses to mint without a policy. The minted scope and destination must equal the proposal. Presentation by any other subject is denied. The recipient argument must equal the recipient field. Classification must be in the capability allowlist. Title and body must be non-empty, printable, and within length bounds.
 
 Revocation increments a generation under the same lock as the final check and the ledger append. A commit that observes revocation does not append.
 
@@ -38,5 +40,6 @@ Any of the following falsifies the claim:
 - A voter added after the snapshot changes the counted set.
 - Ballots over an old proposal hash approve the amended proposal.
 - A package that fails verification mints a capability.
+- A package decided under a rule other than the published policy mints a capability.
 - A revoked capability appends to the ledger.
 - The verifier reports an approval from a forged ballot while also reporting the package valid.
