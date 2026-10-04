@@ -1,0 +1,161 @@
+{
+  "mcx_scenario": 1,
+  "name": "ballot-attacks",
+  "description": "Snapshot, amendment, replacement, abstention, and domain-configuration cases on the Section 15.4 electorate. Each condition states the outcome the Section 7 predicate requires.",
+  "decision_type": "D2",
+  "proposal": {
+    "action": "grant_network_egress",
+    "scope": "research-agent-alpha",
+    "destination": "https://uploads.example",
+    "expires_at": 4600
+  },
+  "electorates": {
+    "shared": {
+      "human": ["human-1"],
+      "infrastructure": ["infra-1"],
+      "agent": ["agent-1", "agent-2", "agent-3", "agent-4"]
+    },
+    "infra-credential-revoked": [
+      {"voter_id": "human-1", "domain": "human"},
+      {"voter_id": "infra-1", "domain": "infrastructure", "eligible": false},
+      {"voter_id": "agent-1", "domain": "agent"},
+      {"voter_id": "agent-2", "domain": "agent"},
+      {"voter_id": "agent-3", "domain": "agent"},
+      {"voter_id": "agent-4", "domain": "agent"}
+    ]
+  },
+  "rules": {
+    "mcx": {"required_domains": ["human", "infrastructure", "agent"], "threshold": "2/3", "require_domain_assent": true},
+    "one-domain": {"required_domains": ["agent"], "threshold": "2/3", "require_domain_assent": true},
+    "needs-custody": {"required_domains": ["human", "custody"], "threshold": "2/3", "require_domain_assent": true}
+  },
+  "published_policy": {"electorate": "shared", "rule": "mcx"},
+  "conditions": [
+    {
+      "name": "outsider_claims_missing_domains",
+      "label": "Voters added after the snapshot claim the human and infrastructure domains",
+      "electorate": "shared",
+      "rule": "mcx",
+      "approve": ["agent-1", "agent-2", "agent-3", "agent-4"],
+      "ballots": [
+        {"voter": "late-human", "domain": "human", "approve": true},
+        {"voter": "late-infra", "domain": "infrastructure", "approve": true}
+      ],
+      "expect": {"approved": false, "reason": "domain_assent_failed", "approvals": 4}
+    },
+    {
+      "name": "wrong_domain_claim",
+      "label": "An agent signs a ballot claiming the human domain",
+      "electorate": "shared",
+      "rule": "mcx",
+      "approve": ["infra-1", "agent-2", "agent-3", "agent-4"],
+      "ballots": [{"voter": "agent-1", "domain": "human", "approve": true}],
+      "expect": {"approved": false, "missing_domains": ["human"], "approvals": 4}
+    },
+    {
+      "name": "amended_proposal_stale_ballots",
+      "label": "Cross-domain approvals cast before the destination was amended",
+      "electorate": "shared",
+      "rule": "mcx",
+      "amend": {"destination": "https://other.example"},
+      "ballots": [
+        {"voter": "human-1", "approve": true, "cast_on": "original"},
+        {"voter": "infra-1", "approve": true, "cast_on": "original"},
+        {"voter": "agent-1", "approve": true, "cast_on": "original"},
+        {"voter": "agent-2", "approve": true, "cast_on": "original"}
+      ],
+      "expect": {"approved": false, "approvals": 0}
+    },
+    {
+      "name": "amended_proposal_fresh_ballots",
+      "label": "The same voters approve the amended proposal",
+      "electorate": "shared",
+      "rule": "mcx",
+      "amend": {"destination": "https://other.example"},
+      "approve": ["human-1", "infra-1", "agent-1", "agent-2"],
+      "expect": {"approved": true, "approvals": 4}
+    },
+    {
+      "name": "conflicting_ballots_same_sequence",
+      "label": "The human signs approve and reject at the same sequence",
+      "electorate": "shared",
+      "rule": "mcx",
+      "approve": ["infra-1", "agent-1", "agent-2", "agent-3"],
+      "ballots": [
+        {"voter": "human-1", "approve": true, "sequence": 1},
+        {"voter": "human-1", "approve": false, "sequence": 1}
+      ],
+      "expect": {"approved": false, "missing_domains": ["human"], "voided_voters": ["human-1"]}
+    },
+    {
+      "name": "equivocation_then_higher_sequence",
+      "label": "The human signs approve and reject at one sequence, then approves at a higher one",
+      "electorate": "shared",
+      "rule": "mcx",
+      "approve": ["infra-1", "agent-1", "agent-2", "agent-3"],
+      "ballots": [
+        {"voter": "human-1", "approve": true, "sequence": 1},
+        {"voter": "human-1", "approve": false, "sequence": 1},
+        {"voter": "human-1", "approve": true, "sequence": 2}
+      ],
+      "expect": {"approved": false, "reason": "domain_assent_failed", "missing_domains": ["human"],
+                 "voided_voters": ["human-1"], "approvals": 4, "electorate_size": 6}
+    },
+    {
+      "name": "identical_resubmission",
+      "label": "The human submits the same approving ballot twice at one sequence",
+      "electorate": "shared",
+      "rule": "mcx",
+      "approve": ["infra-1", "agent-1", "agent-2"],
+      "ballots": [
+        {"voter": "human-1", "approve": true, "sequence": 1},
+        {"voter": "human-1", "approve": true, "sequence": 1}
+      ],
+      "expect": {"approved": true, "approvals": 4, "voided_voters": []}
+    },
+    {
+      "name": "replacement_by_higher_sequence",
+      "label": "The human rejects, then approves at a higher sequence",
+      "electorate": "shared",
+      "rule": "mcx",
+      "approve": ["infra-1", "agent-1", "agent-2"],
+      "ballots": [
+        {"voter": "human-1", "approve": false, "sequence": 0},
+        {"voter": "human-1", "approve": true, "sequence": 1}
+      ],
+      "expect": {"approved": true, "approvals": 4}
+    },
+    {
+      "name": "abstentions_stay_in_denominator",
+      "label": "Every domain approves once; three agents abstain",
+      "electorate": "shared",
+      "rule": "mcx",
+      "approve": ["human-1", "infra-1", "agent-1"],
+      "expect": {"approved": false, "reason": "threshold_failed", "approvals": 3, "electorate_size": 6}
+    },
+    {
+      "name": "one_required_domain",
+      "label": "A domain-assent profile that names only one domain",
+      "electorate": "shared",
+      "rule": "one-domain",
+      "approve": ["human-1", "infra-1", "agent-1", "agent-2", "agent-3", "agent-4"],
+      "expect": {"approved": false, "reason": "insufficient_required_domains"}
+    },
+    {
+      "name": "required_domain_absent_from_snapshot",
+      "label": "A required domain has no member in the snapshot",
+      "electorate": "shared",
+      "rule": "needs-custody",
+      "approve": ["human-1", "infra-1", "agent-1", "agent-2", "agent-3", "agent-4"],
+      "expect": {"approved": false, "reason": "quorum_failed"}
+    },
+    {
+      "name": "required_domain_credential_revoked",
+      "label": "The only infrastructure voter is ineligible at snapshot time",
+      "electorate": "infra-credential-revoked",
+      "rule": "mcx",
+      "approve": ["human-1", "infra-1", "agent-1", "agent-2", "agent-3", "agent-4"],
+      "expect": {"approved": false, "reason": "quorum_failed", "electorate_size": 5}
+    }
+  ]
+}

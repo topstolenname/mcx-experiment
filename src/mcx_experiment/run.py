@@ -2,6 +2,10 @@
 
 The single-administrator arm is an explicit centralized baseline: domain
 assent is off. It is not a one-domain MCX decision.
+
+The electorates, rules, ballots, capability, and requests live in
+src/mcx_experiment/scenarios/section-15.4.json. Edit a copy of that file and
+run it with mcx-scenario rather than changing this module.
 """
 
 from __future__ import annotations
@@ -11,16 +15,17 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.enforcer import Capability, Enforcer
-from mcx_experiment.evidence import build_package
 from mcx_experiment.protocol import DEFAULT_THRESHOLDS, Ballot, DecisionType, Snapshot, Voter, evaluate
-from mcx_experiment.verifier import verify_package
+from mcx_experiment.scenario import load, run_conditions, run_enforcement
+
+SCENARIO = "section-15.4"
 
 EXPANSION = {
     "action": "grant_network_egress",
     "scope": "research-agent-alpha",
     "destination": "https://uploads.example",
     "impact": "Adds an external write destination",
+    "expires_at": 4600,
 }
 
 VOTER_IDS = (
@@ -52,57 +57,10 @@ def _snap(decision_id: str, voters: list[Voter], domains: tuple[str, ...], requi
     )
 
 
-def _condition(name: str, snapshot: Snapshot, ballots: list[Ballot]) -> dict:
-    verdict = evaluate(snapshot, ballots)
-    effect = {"installed": verdict.approved, "capability_id": "cap-egress" if verdict.approved else None}
-    package = build_package(snapshot, ballots, VOTER_KEYS, effect, RECORDER)
-    return {
-        "condition": name,
-        "package": package,
-        "verification": verify_package(package, PUBLIC, RECORDER_PUBLIC),
-    }
-
-
 def comparisons() -> list[dict]:
-    shared = [
-        Voter("human-1", "human"),
-        Voter("infra-1", "infrastructure"),
-        Voter("agent-1", "agent"),
-        Voter("agent-2", "agent"),
-        Voter("agent-3", "agent"),
-        Voter("agent-4", "agent"),
-    ]
-    admin = _snap("d2-admin", [Voter("admin-1", "admin")], (), False)
-    admin_ballots = [Ballot("admin-1", "admin", True, admin.proposal_hash)]
-    flat = _snap("d2-flat", shared, (), False)
-    domain = _snap("d2-mcx", shared, ("human", "infrastructure", "agent"), True)
-    flat_ballots = [Ballot(f"agent-{i}", "agent", True, flat.proposal_hash) for i in range(1, 5)]
-    domain_ballots = [Ballot(f"agent-{i}", "agent", True, domain.proposal_hash) for i in range(1, 5)]
-    labeled = [
-        Voter("ops-1", "ops"),
-        Voter("custody-1", "custody"),
-        Voter("agent-1", "agent"),
-        Voter("agent-2", "agent"),
-        Voter("agent-3", "agent"),
-        Voter("agent-4", "agent"),
-    ]
-    unlabeled = _snap("d2-unlabeled", labeled, ("ops", "custody"), True)
-    unlabeled_ballots = [Ballot(f"agent-{i}", "agent", True, unlabeled.proposal_hash) for i in range(1, 5)]
-    positive = _snap("d2-positive", shared, ("human", "agent", "infrastructure"), True)
-    positive_ballots = [
-        Ballot("human-1", "human", True, positive.proposal_hash),
-        Ballot("agent-1", "agent", True, positive.proposal_hash),
-        Ballot("agent-2", "agent", True, positive.proposal_hash),
-        Ballot("agent-3", "agent", True, positive.proposal_hash),
-        Ballot("infra-1", "infrastructure", True, positive.proposal_hash),
-    ]
-    return [
-        _condition("single_administrator", admin, admin_ballots),
-        _condition("flat_threshold_same_electorate", flat, flat_ballots),
-        _condition("mcx_domain_assent", domain, domain_ballots),
-        _condition("unlabeled_required_domains", unlabeled, unlabeled_ballots),
-        _condition("legitimate_cross_domain", positive, positive_ballots),
-    ]
+    """The five D2 conditions, read from the built-in section-15.4 scenario file."""
+    results = run_conditions(load(SCENARIO), VOTER_KEYS, RECORDER)
+    return [{"condition": c.name, "package": c.package, "verification": c.verification} for c in results]
 
 
 def snapshot_attacks() -> dict:
@@ -123,64 +81,9 @@ def snapshot_attacks() -> dict:
 
 
 def d0_traces() -> list[dict]:
-    enforcer = Enforcer(
-        capabilities={
-            "cap-parent": Capability(
-                "cap-parent",
-                scope="research-agent-alpha",
-                audience="research-agent-alpha",
-                tool="ticket.create",
-                destinations=("https://tickets.example",),
-                allowed_recipients=("ops@example.com",),
-                allowed_classifications=("public",),
-            )
-        }
-    )
-    valid_fields = {
-        "title": "status",
-        "body": "nominal",
-        "recipient": "ops@example.com",
-        "classification": "public",
-    }
-    valid = enforcer.commit(
-        presenter="research-agent-alpha",
-        capability_id="cap-parent",
-        tool="ticket.create",
-        destination="https://tickets.example",
-        recipient="ops@example.com",
-        fields=valid_fields,
-    )
-    bad_recipient = enforcer.commit(
-        presenter="research-agent-alpha",
-        capability_id="cap-parent",
-        tool="ticket.create",
-        destination="https://tickets.example",
-        recipient="attacker@evil.example",
-        fields={**valid_fields, "recipient": "attacker@evil.example"},
-    )
-    classified = enforcer.commit(
-        presenter="research-agent-alpha",
-        capability_id="cap-parent",
-        tool="ticket.create",
-        destination="https://tickets.example",
-        recipient="ops@example.com",
-        fields={**valid_fields, "classification": "restricted"},
-    )
-    raced = enforcer.commit(
-        presenter="research-agent-alpha",
-        capability_id="cap-parent",
-        tool="ticket.create",
-        destination="https://tickets.example",
-        recipient="ops@example.com",
-        fields=valid_fields,
-        before_commit=lambda: enforcer.revoke("cap-parent"),
-    )
-    return [
-        {"trace": "valid_commit", "receipt": valid.to_dict(), "ledger_length": 1},
-        {"trace": "unauthorized_recipient", "receipt": bad_recipient.to_dict()},
-        {"trace": "classified_payload", "receipt": classified.to_dict()},
-        {"trace": "revocation_before_commit", "receipt": raced.to_dict(), "ledger_length": len(enforcer.ledger)},
-    ]
+    """The D0 traces, read from the enforcement steps of the same scenario file."""
+    _, steps = run_enforcement(load(SCENARIO))
+    return [{"trace": s.name, "receipt": s.receipt, "ledger_length": s.ledger_length} for s in steps]
 
 
 def run(out_dir: Path) -> dict:

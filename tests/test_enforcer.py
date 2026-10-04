@@ -1,4 +1,6 @@
-from mcx_experiment.enforcer import Capability, Enforcer
+from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, EnforcementBundle, Enforcer
+
+BUNDLE = EnforcementBundle().digest
 
 
 def enforcer():
@@ -7,12 +9,15 @@ def enforcer():
             "cap": Capability(
                 "cap",
                 scope="alpha",
-                audience="alpha",
+                audience=DEFAULT_AUDIENCE,
                 tool="ticket.create",
                 destinations=("https://tickets.example",),
                 allowed_recipients=("ops@example.com",),
+                expires_at=4600,
+                enforcement_bundle_hash=BUNDLE,
             )
-        }
+        },
+        clock=lambda: 1000.0,
     )
 
 

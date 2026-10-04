@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from fractions import Fraction
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.enforcer import Capability, Enforcer
+from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, EnforcementBundle, Enforcer
 from mcx_experiment.evidence import build_package, sign_ballot
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate, meets_threshold
 from mcx_experiment.verifier import verify_package
+
+BUNDLE = EnforcementBundle().digest
 
 DOMAINS = ("human", "agent", "infra")
 
@@ -20,10 +24,10 @@ def _snapshot(required=DOMAINS, assent=True):
     return Snapshot(
         decision_id="d-test",
         decision_type=DecisionType.D2,
-        proposal={"grant": "egress"},
+        proposal={"grant": "egress", "expires_at": 4600, "enforcement_bundle_hash": BUNDLE},
         electorate=_electorate(),
         required_domains=tuple(required),
-        threshold=2 / 3,
+        threshold=Fraction(2, 3),
         require_domain_assent=assent,
     )
 
@@ -42,9 +46,9 @@ def test_single_required_domain_cannot_approve():
 
 
 def test_threshold_is_exact():
-    assert meets_threshold(4, 6, 2 / 3)
-    assert not meets_threshold(3, 6, 2 / 3)
-    assert not meets_threshold(0, 0, 2 / 3)
+    assert meets_threshold(4, 6, Fraction(2, 3))
+    assert not meets_threshold(3, 6, Fraction(2, 3))
+    assert not meets_threshold(0, 0, Fraction(2, 3))
 
 
 def test_equal_sequence_conflict_voids_voter():
@@ -106,12 +110,14 @@ def _enforcer():
     cap = Capability(
         capability_id="c1",
         scope="agent",
-        audience="agent",
+        audience=DEFAULT_AUDIENCE,
         tool="ticket",
         destinations=("tickets.example",),
         allowed_recipients=("ok@example.com",),
+        expires_at=4600,
+        enforcement_bundle_hash=BUNDLE,
     )
-    return Enforcer(capabilities={"c1": cap})
+    return Enforcer(capabilities={"c1": cap}, clock=lambda: 1000.0)
 
 
 def _args(recipient="ok@example.com", payload_recipient="ok@example.com"):

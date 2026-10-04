@@ -14,19 +14,47 @@ def issue(
     recorder_key: Ed25519PublicKey,
     enforcer: Enforcer,
     capability_id: str,
+    *,
+    policy: dict,
 ) -> Capability | None:
-    report = verify_package(package, voter_keys, recorder_key)
+    """Mint only if the package verifies against the independently published ``policy``.
+
+    The policy is required. Without it the verifier reads the electorate,
+    required domains, and threshold from the package itself, so a package
+    decided under a weaker rule (for example the centralized baseline) would
+    verify and mint.
+
+    The capability expires at the proposal's ``expires_at``. There is no
+    default lifetime: a proposal without an explicit expiry, or one already
+    past it at minting time, mints nothing.
+
+    The proposal must name the enforcer's active enforcement bundle. The
+    capability is bound to that bundle and stops working if the enforcer's
+    bundle changes.
+    """
+    if policy is None:
+        return None
+    report = verify_package(package, voter_keys, recorder_key, policy=policy, bundle_hash=enforcer.bundle.digest)
     if not report["valid"] or not package["verdict"]["approved"]:
         return None
     proposal = package["proposal"]
+    expires_at = proposal.get("expires_at")
+    if isinstance(expires_at, bool) or not isinstance(expires_at, int) or expires_at <= 0:
+        return None
+    now = enforcer._now()
+    if now is None or now >= expires_at:
+        return None
     capability = Capability(
         capability_id=capability_id,
         scope=proposal["scope"],
-        audience=proposal["scope"],
+        audience=enforcer.audience,
+        expires_at=expires_at,
+        policy_version=f"{package['decision_id']}@{package['proposal_hash'][:12]}",
         tool="ticket.create",
         destinations=(proposal["destination"],),
         allowed_recipients=("ops@example.com",),
         allowed_classifications=("public",),
+        enforcement_bundle_hash=proposal["enforcement_bundle_hash"],
     )
-    enforcer.capabilities[capability_id] = capability
+    enforcer.grant(capability)
     return capability

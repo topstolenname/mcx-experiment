@@ -1,11 +1,13 @@
 """Every approval subset of a three-voter electorate, checked against an independent count."""
 
+from fractions import Fraction
+
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate
 
 
 def test_every_subset_matches_an_independent_count():
     voters = (Voter("h", "human"), Voter("a", "agent"), Voter("i", "infrastructure"))
-    snap = Snapshot("d", DecisionType.D2, {"n": 1}, voters, ("human", "agent", "infrastructure"), 2 / 3, True)
+    snap = Snapshot("d", DecisionType.D2, {"n": 1}, voters, ("human", "agent", "infrastructure"), Fraction(2, 3), True)
     for mask in range(8):
         ballots = [
             Ballot(voters[i].voter_id, voters[i].domain, True, snap.proposal_hash)
@@ -15,5 +17,5 @@ def test_every_subset_matches_an_independent_count():
         result = evaluate(snap, ballots)
         approvals = bin(mask).count("1")
         domains = {voters[i].domain for i in range(3) if mask & (1 << i)}
-        expect = approvals / 3 >= 2 / 3 and domains == {"human", "agent", "infrastructure"}
+        expect = Fraction(approvals, 3) >= Fraction(2, 3) and domains == {"human", "agent", "infrastructure"}
         assert result.approved is expect

@@ -15,9 +15,13 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 mcx-experiment = "mcx_experiment.run:main"
+mcx-scenario = "mcx_experiment.scenario:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+mcx_experiment = ["scenarios/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

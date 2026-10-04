@@ -21,9 +21,18 @@ The second command exits non-zero if any catalogued attack is approved or commit
 | RT-7 | Signature on an otherwise approving package replaced | invalid, recount not approved |
 | RT-8 | Denied package presented for issuance | no capability |
 | RT-13 | Verified approval presented for issuance | capability minted |
+| RT-14 | Centralized-baseline package, valid on its own terms, presented to an issuer pinned to the published MCX policy | no capability |
 | RT-9 | Child presents parent capability | deny |
 | RT-10 | Recipient argument differs from payload | deny |
 | RT-11 | Restricted classification | deny |
 | RT-12 | Revoke between check and append | no ledger append |
+| RT-15 | Capability expires between check and append | deny, `capability_expired`, no ledger append |
+| RT-16 | Parent revoked while an attenuated child commits | deny, `revoked_at_effect_time`, no ledger append |
+| RT-17 | Deny receipt edited to read allow | enforcer signature invalid |
+| RT-18 | Capability minted for another resource presented here | deny, `audience_mismatch` |
+| RT-19 | A voter's key signs approve and reject at one sequence, then approve at a higher sequence | voter voided for the proposal, still in the denominator; engine and verifier agree; deny |
+| RT-20 | Approved package whose proposal has no expiry presented for issuance; a capability with no expiry presented at the enforcer | verifier reports `proposal_expiry_missing`, no capability; deny `capability_expiry_missing`, no ledger append |
+| RT-21 | Approved package naming one enforcement bundle presented to an issuer whose enforcer runs another (a schema loosened in place) | verifier reports `bundle_hash_mismatch`, no capability |
+| RT-22 | Enforcement bundle replaced in place after a capability was minted under the old one: between check and effect, and before a later request | deny, `enforcement_bundle_mismatch`, no ledger append |
 
 Not in the catalog, and not claimed: independent operators, a network boundary, or a label store outside the capability.
