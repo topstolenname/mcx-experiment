@@ -28,7 +28,7 @@ Recorded by `python -m mcx_experiment.run` on this tree:
 
 The denial reason on the domain-assent arm is `domain_assent_failed`. Four of six is enough for two-thirds and not enough for the missing domains. The catalog in `REDTEAM.md` held, including a forged signature on an otherwise approving package, issuance from a denied package, and revocation between check and append.
 
-Every approval subset of a three-voter, three-domain electorate matched an independent count.
+Every approval subset of a three-voter, three-domain electorate matched a count computed separately in the test.
 
 ## What this is
 
