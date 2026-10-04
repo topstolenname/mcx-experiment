@@ -1,4 +1,4 @@
-"""Package construction. Verification lives in verifier.py on purpose."""
+"""Package construction. Verification lives in verifier.py and does not import this module."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import base64
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.protocol import Ballot, Snapshot, content_hash, canonical, evaluate
+from mcx_experiment.protocol import Ballot, Snapshot, canonical, content_hash, evaluate
 
 
 def sign_ballot(key: Ed25519PrivateKey, ballot: Ballot) -> str:
@@ -22,8 +22,16 @@ def sign_ballot(key: Ed25519PrivateKey, ballot: Ballot) -> str:
     return base64.b64encode(key.sign(payload)).decode()
 
 
-def build_package(snapshot: Snapshot, ballots: list[Ballot], keys: dict[str, Ed25519PrivateKey], effect: dict) -> dict:
+def build_package(
+    snapshot: Snapshot,
+    ballots: list[Ballot],
+    voter_keys: dict[str, Ed25519PrivateKey],
+    effect: dict,
+    recorder_key: Ed25519PrivateKey,
+) -> dict:
     verdict = evaluate(snapshot, ballots)
+    if bool(effect.get("installed")) != verdict.approved:
+        raise ValueError("effect_verdict_mismatch")
     body = {
         "decision_id": snapshot.decision_id,
         "decision_type": snapshot.decision_type.value,
@@ -43,12 +51,14 @@ def build_package(snapshot: Snapshot, ballots: list[Ballot], keys: dict[str, Ed2
                 "approve": b.approve,
                 "proposal_hash": b.proposal_hash,
                 "sequence": b.sequence,
-                "signature": sign_ballot(keys[b.domain], b),
+                "signature": sign_ballot(voter_keys[b.voter_id], b),
             }
             for b in ballots
         ],
         "verdict": verdict.to_dict(),
         "effect": effect,
     }
-    body["package_hash"] = content_hash(body)
+    digest = content_hash(body)
+    body["package_hash"] = digest
+    body["recorder_signature"] = base64.b64encode(recorder_key.sign(digest.encode())).decode()
     return body
