@@ -53,7 +53,7 @@ References: `tests/<file>.py::<test>`, `RT-<n>` (see `REDTEAM.md`), and `scenari
 
 | Requirement | Status here | Evidence |
 | --- | --- | --- |
-| Deterministic reference engine for Section 7 and an independent verifier | Shown (reference). The verifier is separate code by the same author in the same repository | `tests/test_properties.py::test_engine_matches_an_independent_oracle`, `tests/test_properties.py::test_oracle_catches_a_deliberately_broken_engine`, `tests/test_properties.py::test_verifier_agrees_with_engine_after_a_json_round_trip`, `tests/test_properties.py::test_engine_and_verifier_agree_on_equivocation` |
+| Deterministic reference engine for Section 7 and a separate verifier | Shown (reference). The verifier is separate code by the same author in the same repository | `tests/test_properties.py::test_engine_matches_an_independent_oracle`, `tests/test_properties.py::test_oracle_catches_a_deliberately_broken_engine`, `tests/test_properties.py::test_verifier_agrees_with_engine_after_a_json_round_trip`, `tests/test_properties.py::test_engine_and_verifier_agree_on_equivocation` |
 | D2 expansion by an agent-domain Sybil coalition against a centralized baseline; publish snapshot, ballots, package, verifier result, and receipts | Shown (reference) | `scenario:section-15.4/single_administrator`, `scenario:section-15.4/mcx_domain_assent`, `tests/test_artifact.py::test_committed_summary_is_what_the_publish_tool_writes`, `python -m mcx_experiment.publish` |
 | The three D0 traces with the enforcer outside the agent | Partly shown: the traces. The enforcer is not outside the agent | `scenario:section-15.4/unauthorized_recipient`, `scenario:section-15.4/delegation`, `scenario:section-15.4/revocation_before_commit` |
 
