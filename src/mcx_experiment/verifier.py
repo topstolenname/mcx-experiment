@@ -20,6 +20,19 @@ def content_hash(payload: dict) -> str:
     return hashlib.sha256(canonical(payload)).hexdigest()
 
 
+def _threshold(value: object) -> Fraction | None:
+    """Exact threshold from its canonical string, e.g. "2/3". Anything else is malformed."""
+    if not isinstance(value, str):
+        return None
+    try:
+        exact = Fraction(value)
+    except (ValueError, ZeroDivisionError):
+        return None
+    if not (0 < exact <= 1) or str(exact) != value:
+        return None
+    return exact
+
+
 def _recount(package: dict) -> dict:
     eligible_ids: dict[str, str] = {}
     for v in package["electorate"]:
@@ -48,9 +61,11 @@ def _recount(package: dict) -> dict:
     ratio = (len(approvals) / electorate_size) if electorate_size else 0.0
     assent = {domain: any(b["domain"] == domain for b in approvals) for domain in required}
     need_domains = package.get("require_domain_assent", True)
-    threshold_met = electorate_size > 0 and (
-        Fraction(len(approvals), electorate_size)
-        >= Fraction(package["threshold"]).limit_denominator(10_000)
+    threshold = _threshold(package["threshold"])
+    threshold_met = (
+        threshold is not None
+        and electorate_size > 0
+        and Fraction(len(approvals), electorate_size) >= threshold
     )
     domains_configured = (not need_domains) or len(set(required)) >= MIN_REQUIRED_DOMAINS
     domain_ok = all(assent.values()) if need_domains else True
@@ -114,6 +129,8 @@ def verify_package(
     )
     if expected_hash != package["proposal_hash"]:
         errors.append("proposal_hash_mismatch")
+    if _threshold(package["threshold"]) is None:
+        errors.append("malformed_threshold")
     seen: set[str] = set()
     for voter in package["electorate"]:
         if voter["voter_id"] in seen:

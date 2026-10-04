@@ -6,7 +6,7 @@ import base64
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.protocol import Ballot, Snapshot, canonical, content_hash, evaluate
+from mcx_experiment.protocol import Ballot, Snapshot, canonical, content_hash, evaluate, threshold_text
 
 
 def sign_ballot(key: Ed25519PrivateKey, ballot: Ballot) -> str:
@@ -42,7 +42,7 @@ def build_package(
             for v in snapshot.electorate
         ],
         "required_domains": list(snapshot.required_domains),
-        "threshold": snapshot.threshold,
+        "threshold": threshold_text(snapshot.threshold),
         "require_domain_assent": snapshot.require_domain_assent,
         "ballots": [
             {

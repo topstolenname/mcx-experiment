@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from fractions import Fraction
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from mcx_experiment.enforcer import Capability, Enforcer
@@ -29,7 +31,7 @@ def _snap(voters: list[Voter], domains: tuple[str, ...], assent: bool) -> Snapsh
         {"action": "grant_network_egress", "scope": "alpha", "destination": "https://uploads.example"},
         tuple(voters),
         domains,
-        2 / 3,
+        Fraction(2, 3),
         assent,
     )
 

@@ -10,9 +10,10 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
+from decimal import Decimal
 from enum import Enum
 from fractions import Fraction
-from typing import Iterable
+from typing import Iterable, Union
 
 
 class DecisionType(str, Enum):
@@ -24,13 +25,42 @@ class DecisionType(str, Enum):
 
 
 DEFAULT_THRESHOLDS = {
-    DecisionType.D1: 2 / 3,
-    DecisionType.D2: 2 / 3,
-    DecisionType.D3: 2 / 3,
-    DecisionType.D4: 0.75,
+    DecisionType.D1: Fraction(2, 3),
+    DecisionType.D2: Fraction(2, 3),
+    DecisionType.D3: Fraction(2, 3),
+    DecisionType.D4: Fraction(3, 4),
 }
 
 MIN_REQUIRED_DOMAINS = 2
+
+ThresholdLike = Union[Fraction, int, str, Decimal]
+
+
+def as_threshold(value: ThresholdLike) -> Fraction:
+    """Exact threshold in (0, 1].
+
+    Accepts a Fraction, an int, a Decimal, or a string such as "2/3" or "0.75".
+    A binary float is rejected: 2/3 as a float is not two-thirds, and rounding
+    it back to a fraction can move the bar in either direction.
+    """
+    if isinstance(value, bool) or isinstance(value, float):
+        raise TypeError(
+            f"threshold {value!r} is a float; pass Fraction(2, 3) or the string '2/3'"
+        )
+    if not isinstance(value, (Fraction, int, str, Decimal)):
+        raise TypeError(f"threshold {value!r} must be a Fraction, int, Decimal, or string")
+    try:
+        exact = Fraction(value)
+    except (ValueError, ZeroDivisionError, OverflowError) as exc:
+        raise ValueError(f"threshold {value!r} is not a number") from exc
+    if not (0 < exact <= 1):
+        raise ValueError(f"threshold {value!r} must be in (0, 1]")
+    return exact
+
+
+def threshold_text(value: ThresholdLike) -> str:
+    """Canonical string form used in hashes and packages, e.g. "2/3" or "1"."""
+    return str(as_threshold(value))
 
 
 def canonical(payload: dict) -> bytes:
@@ -41,11 +71,11 @@ def content_hash(payload: dict) -> str:
     return hashlib.sha256(canonical(payload)).hexdigest()
 
 
-def meets_threshold(approvals: int, electorate_size: int, threshold: float) -> bool:
-    """Exact rational comparison; avoids float rounding at the boundary."""
+def meets_threshold(approvals: int, electorate_size: int, threshold: ThresholdLike) -> bool:
+    """Exact rational comparison of approvals / electorate against the threshold."""
     if electorate_size <= 0:
         return False
-    return Fraction(approvals, electorate_size) >= Fraction(threshold).limit_denominator(10_000)
+    return Fraction(approvals, electorate_size) >= as_threshold(threshold)
 
 
 @dataclass(frozen=True)
@@ -71,10 +101,12 @@ class Snapshot:
     proposal: dict
     electorate: tuple[Voter, ...]
     required_domains: tuple[str, ...]
-    threshold: float
+    threshold: Fraction
     require_domain_assent: bool = True
 
     def __post_init__(self) -> None:
+        self.threshold = as_threshold(self.threshold)
+        self.decision_type = DecisionType(self.decision_type)
         self.electorate = tuple(self.electorate)
         self.required_domains = tuple(self.required_domains)
         seen: set[str] = set()
@@ -95,7 +127,7 @@ class Snapshot:
                     for v in self.electorate
                 ],
                 "required_domains": list(self.required_domains),
-                "threshold": self.threshold,
+                "threshold": threshold_text(self.threshold),
                 "require_domain_assent": self.require_domain_assent,
             }
         )
@@ -112,7 +144,7 @@ class Approval:
     electorate_size: int
     approvals: int
     approval_ratio: float
-    threshold: float
+    threshold: Fraction
     domain_assent: dict[str, bool]
     quorum: bool
     counted_ballots: list[Ballot] = field(default_factory=list)
@@ -124,7 +156,7 @@ class Approval:
             "electorate_size": self.electorate_size,
             "approvals": self.approvals,
             "approval_ratio": self.approval_ratio,
-            "threshold": self.threshold,
+            "threshold": threshold_text(self.threshold),
             "domain_assent": self.domain_assent,
             "quorum": self.quorum,
             "counted_ballots": [

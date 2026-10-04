@@ -14,7 +14,7 @@ A ballot is valid only if its proposal hash equals the snapshot hash, its voter 
 
 A snapshot that lists the same voter id twice is malformed and is rejected.
 
-The denominator is the number of eligible voters in the snapshot. The threshold comparison is the exact fraction `approvals / electorate >= threshold`.
+The denominator is the number of eligible voters in the snapshot. The threshold comparison is the exact fraction `approvals / electorate >= threshold`. The threshold is an exact rational in (0, 1], carried in the hash and the package as its canonical string, for example `2/3`. A binary float is rejected rather than rounded, and a package whose threshold is not a canonical fraction string fails verification.
 
 If domain assent is required, the snapshot must name at least two distinct required domains, each of those domains must have an eligible voter, and each must have at least one counted approval. Otherwise the decision is denied.
 
