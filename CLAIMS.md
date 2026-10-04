@@ -72,3 +72,11 @@ References: `tests/<file>.py::<test>`, `RT-<n>` (see `REDTEAM.md`), and `scenari
 | Sanctions applied (10.6) | Not shown | Levels are recorded in receipts and never applied |
 | Enforcement-bundle changes pass a D1 or D4 decision (11) | Not shown | The bundle is hashed, not governed. An in-place bundle change does deny capabilities bound to the old bundle (`RT-22`), but nothing here routes the change itself through a decision |
 | Fail closed when trusted time is unavailable (10.3, 13.4) | Shown (reference) | `tests/test_enforcer_policy.py::test_missing_trusted_time_fails_closed` |
+
+## Section 13 and 14 requirements
+
+| Paper requirement | Status here | Evidence |
+|---|---|---|
+| Cross-domain hash attestation before a human signs (13.5) | Not shown | Not implemented |
+| Bounded, typed D1–D4 diffs (13.5) | Not shown | Not implemented |
+| Cumulative quotas and effect classification against compositional D0 effects (14) | Not shown | Not implemented. Out-of-band monitoring is not implemented either, and sanctions are recorded but never applied (row "Sanctions applied (10.6)") |
