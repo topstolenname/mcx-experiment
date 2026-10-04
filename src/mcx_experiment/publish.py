@@ -37,16 +37,17 @@ def _raw(key) -> str:
 
 
 def build_artifact() -> dict:
-    from mcx_experiment.run import PUBLIC
+    from mcx_experiment.run import VOTER_KEYS
 
+    conditions = comparisons()
     return {
         "paper": "Meta-Concord draft 0.4",
         "section": "15.4",
         "independence_claimed": False,
         "enforcer_placement": "in-process reference, not a resource broker",
-        "voter_public_keys": {voter_id: _raw(key) for voter_id, key in PUBLIC.items()},
+        "voter_public_keys": {voter_id: _raw(key.public_key()) for voter_id, key in VOTER_KEYS.items()},
         "recorder_public_key": _raw(RECORDER_PUBLIC),
-        "conditions": comparisons(),
+        "conditions": conditions,
         "snapshot_attacks": snapshot_attacks(),
         "d0_traces": d0_traces(),
         "redteam": run_catalog(),
