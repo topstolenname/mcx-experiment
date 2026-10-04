@@ -2,7 +2,7 @@
 
 The effect-time check and the ledger append share a lock with revoke().
 Capabilities carry an expiry and an audience; the audience names this
-enforcer, not the presenter. Parameter schemas, sanction levels, and the
+enforcer, not the presenter. A capability without an expiry is denied. Parameter schemas, sanction levels, and the
 constraint set are data in an enforcement bundle whose hash, with the
 manifest hash, goes into every signed receipt. Missing policy denies.
 
@@ -47,6 +47,19 @@ def _iso(moment: Optional[float]) -> Optional[str]:
     if moment is None:
         return None
     return datetime.fromtimestamp(moment, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _is_time(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == value
+
+
+def _expiry_problem(chain: list["Capability"]) -> Optional[str]:
+    """A capability with no expiry, or an unreadable one, is denied. There is no default lifetime."""
+    if any(c.expires_at is None for c in chain):
+        return "capability_expiry_missing"
+    if not all(_is_time(c.expires_at) for c in chain):
+        return "capability_expiry_malformed"
+    return None
 
 
 @dataclass(frozen=True)
@@ -353,7 +366,10 @@ class Enforcer:
                 return None, "unknown_capability"
             if any(c.revoked for c in chain):
                 return None, "revoked_at_effect_time"
-            if any(c.expires_at is not None and now >= c.expires_at for c in chain):
+            missing = _expiry_problem(chain)
+            if missing is not None:
+                return None, missing
+            if any(now >= c.expires_at for c in chain):
                 return None, "capability_expired"
             if presenter != parent.scope:
                 return None, "delegation_not_attenuated"
@@ -373,7 +389,9 @@ class Enforcer:
                 if not set(values) <= set(getattr(parent, name)):
                     return None, "delegation_broadens_parent"
             child_expiry = parent.expires_at if expires_at is None else expires_at
-            if parent.expires_at is not None and (child_expiry is None or child_expiry > parent.expires_at):
+            if not _is_time(child_expiry):
+                return None, "capability_expiry_malformed"
+            if child_expiry > parent.expires_at:
                 return None, "delegation_outlives_parent"
             child = Capability(
                 capability_id=child_id,
@@ -454,7 +472,11 @@ class Enforcer:
         if any(c.revoked for c in chain):
             receipt.reason = "revoked_at_effect_time"
             return receipt
-        if any(c.expires_at is not None and now >= c.expires_at for c in chain):
+        missing = _expiry_problem(chain)
+        if missing is not None:
+            receipt.reason = missing
+            return receipt
+        if any(now >= c.expires_at for c in chain):
             receipt.reason = "capability_expired"
             return receipt
         if not cap.transferable and presenter != cap.scope:

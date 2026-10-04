@@ -17,7 +17,7 @@ from mcx_experiment.scenario import ScenarioError, builtin_names, liveness, main
 MINIMAL = {
     "mcx_scenario": 1,
     "name": "minimal",
-    "proposal": {"action": "grant", "scope": "alpha", "destination": "https://x.example"},
+    "proposal": {"action": "grant", "scope": "alpha", "destination": "https://x.example", "expires_at": 4600},
     "electorates": {"e": {"human": ["h1"], "infra": ["i1"], "agent": ["a1"]}},
     "rules": {"r": {"required_domains": ["human", "infra"], "threshold": "2/3"}},
     "conditions": [

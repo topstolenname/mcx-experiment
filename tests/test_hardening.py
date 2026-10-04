@@ -22,7 +22,7 @@ def _snapshot(required=DOMAINS, assent=True):
     return Snapshot(
         decision_id="d-test",
         decision_type=DecisionType.D2,
-        proposal={"grant": "egress"},
+        proposal={"grant": "egress", "expires_at": 4600},
         electorate=_electorate(),
         required_domains=tuple(required),
         threshold=Fraction(2, 3),
@@ -112,8 +112,9 @@ def _enforcer():
         tool="ticket",
         destinations=("tickets.example",),
         allowed_recipients=("ok@example.com",),
+        expires_at=4600,
     )
-    return Enforcer(capabilities={"c1": cap})
+    return Enforcer(capabilities={"c1": cap}, clock=lambda: 1000.0)
 
 
 def _args(recipient="ok@example.com", payload_recipient="ok@example.com"):

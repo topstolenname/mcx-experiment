@@ -49,7 +49,11 @@ def random_snapshot(rng: random.Random, assent: bool | None = None) -> Snapshot:
     return Snapshot(
         decision_id=f"d-{rng.randrange(10**6)}",
         decision_type=rng.choice([DecisionType.D1, DecisionType.D2, DecisionType.D3, DecisionType.D4]),
-        proposal={"action": rng.choice(["grant", "restrict", "revoke"]), "n": rng.randrange(1000)},
+        proposal={
+            "action": rng.choice(["grant", "restrict", "revoke"]),
+            "n": rng.randrange(1000),
+            "expires_at": rng.randint(1, 10**10),
+        },
         electorate=voters,
         required_domains=tuple(required),
         threshold=Fraction(rng.randint(1, denominator), denominator),

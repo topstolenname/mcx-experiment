@@ -32,7 +32,7 @@ APPROVERS = ("human-1", "infra-1", "agent-1", "agent-2")
 
 
 def _snap(voters, proposal=None):
-    return Snapshot("d2", DecisionType.D2, proposal or {"action": "grant"}, voters, REQUIRED, Fraction(2, 3), True)
+    return Snapshot("d2", DecisionType.D2, proposal or {"action": "grant", "expires_at": 4600}, voters, REQUIRED, Fraction(2, 3), True)
 
 
 def _approve(snap, ids):

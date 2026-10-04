@@ -153,6 +153,18 @@ def _number(value: Any, where: str) -> float:
     return float(value)
 
 
+def _require_expiry(proposal: dict, where: str) -> None:
+    """Every proposal carries an explicit expiry. There is no default; a missing one is a malformed file."""
+    if "expires_at" not in proposal:
+        raise ScenarioError(
+            f"{where}: missing expires_at; every proposal needs an explicit expiry "
+            "(a positive integer, Unix seconds) and there is no default"
+        )
+    value = proposal["expires_at"]
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ScenarioError(f"{where}.expires_at: expected a positive integer (Unix seconds), got {value!r}")
+
+
 def _electorate(value: Any, where: str) -> tuple[Voter, ...]:
     """Either {"domain": ["voter", ...]} or [{"voter_id", "domain", "eligible"?}, ...]."""
     voters: list[Voter] = []
@@ -351,6 +363,9 @@ def run_conditions(
         electorate_name, voters = _named(electorates, cond["electorate"], f"{where}.electorate", _electorate, "electorate")
         rule_name, rule = _named(rules, cond["rule"], f"{where}.rule", _rule, "rule")
         proposal = _plain(cond.get("proposal", base_proposal), f"{where}.proposal")
+        if not isinstance(proposal, dict):
+            raise ScenarioError(f"{where}.proposal: expected an object")
+        _require_expiry(proposal, f"{where}.proposal" if "proposal" in cond else f"{src}.proposal")
         decision_type = _decision_type(cond.get("decision_type", base_type), where)
         decision_id = _str(cond.get("decision_id", name), f"{where}.decision_id")
 
@@ -363,6 +378,7 @@ def run_conditions(
             patch = _plain(cond["amend"], f"{where}.amend")
             if not isinstance(patch, dict) or not patch:
                 raise ScenarioError(f"{where}.amend: expected a non-empty object of changed proposal fields")
+            _require_expiry({**proposal, **patch}, f"{where}.amend")
             current = snap({**proposal, **patch})
         else:
             current = original
@@ -445,9 +461,9 @@ ENFORCEMENT_KEYS = {
     "audience", "now", "capabilities", "request_defaults", "steps", "constraints", "schemas", "sanctions",
     "bundle_version", "note",
 }
-CAPABILITY_KEYS = {"capability_id", "scope", "tool", "destinations", "allowed_recipients"}
+CAPABILITY_KEYS = {"capability_id", "scope", "tool", "destinations", "allowed_recipients", "expires_at"}
 CAPABILITY_OPTIONAL = {
-    "audience", "allowed_classifications", "allowed_fields", "transferable", "expires_at",
+    "audience", "allowed_classifications", "allowed_fields", "transferable",
     "parameter_schema", "policy_version",
 }
 REQUEST_KEYS = {"presenter", "capability_id", "tool", "destination", "recipient", "fields"}
@@ -486,8 +502,6 @@ def _capability(raw: dict, where: str, audience: str) -> Capability:
         extra["allowed_classifications"] = tuple(_str_list(raw["allowed_classifications"], f"{where}.allowed_classifications"))
     if "allowed_fields" in raw:
         extra["allowed_fields"] = tuple(_str_list(raw["allowed_fields"], f"{where}.allowed_fields"))
-    if "expires_at" in raw and raw["expires_at"] is not None:
-        extra["expires_at"] = _number(raw["expires_at"], f"{where}.expires_at")
     return Capability(
         capability_id=_str(raw["capability_id"], f"{where}.capability_id"),
         scope=_str(raw["scope"], f"{where}.scope"),
@@ -498,6 +512,7 @@ def _capability(raw: dict, where: str, audience: str) -> Capability:
         transferable=_bool(raw.get("transferable", False), f"{where}.transferable"),
         parameter_schema=_str(raw.get("parameter_schema", TICKET_SCHEMA.schema_id), f"{where}.parameter_schema"),
         policy_version=_str(raw.get("policy_version", "cm-v1"), f"{where}.policy_version"),
+        expires_at=_number(raw["expires_at"], f"{where}.expires_at"),
         **extra,
     )
 

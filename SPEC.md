@@ -26,13 +26,15 @@ A voter absent from the snapshot cannot be added to it. Changing the proposal ch
 
 Each ballot is signed by that voter's key over the canonical ballot. The package hash covers every field except the hash and the recorder signature. The recorder signs the package hash. The verifier recounts with its own encoder. A bad signature is excluded from the recount. `effect.installed` must equal the recorded verdict. A package is valid only if every check passes. Every field is type-checked; a malformed package or ballot fails verification instead of raising.
 
+The proposal must carry `expires_at`, a positive integer in Unix seconds. It is part of the proposal, so it is in the snapshot hash every ballot signs. A package whose proposal has no `expires_at` fails verification with `proposal_expiry_missing`; one that is not a positive integer fails with `proposal_expiry_malformed`. There is no default.
+
 Without a published policy, verification is self-consistency only: the electorate, required domains, threshold, and domain-assent flag are read from the package under check, so a package decided under a weaker rule can verify. A verifier given an independently published policy also requires those inputs, and the decision type if the policy names one, to equal it. The comparison ignores listing order.
 
 ## Issuance and commit
 
-A capability may be minted only from a package that verifies against the published policy and whose verdict is approved. The issuer refuses to mint without a policy. The minted scope and destination must equal the proposal. The minted audience is the enforcer's own identifier, and the capability expires after `ttl_seconds` from the proposal (3600 if absent).
+A capability may be minted only from a package that verifies against the published policy and whose verdict is approved. The issuer refuses to mint without a policy. The minted scope and destination must equal the proposal. The minted audience is the enforcer's own identifier, and the capability expires at the proposal's `expires_at`. There is no default lifetime: the issuer refuses a proposal with no `expires_at`, a malformed one, or one at or before the issuer's current time.
 
-Presentation by any subject other than the capability's scope is denied. A capability whose audience is not this enforcer is denied. A capability at or past its expiry is denied. If the clock cannot be read, every request is denied.
+A capability with no expiry, or one that is not a number, is denied (`capability_expiry_missing`, `capability_expiry_malformed`), and cannot be attenuated. Presentation by any subject other than the capability's scope is denied. A capability whose audience is not this enforcer is denied. A capability at or past its expiry is denied. If the clock cannot be read, every request is denied.
 
 Payload rules are data. A capability names a parameter schema in the enforcement bundle; a missing schema denies. The default ticket schema requires the recipient argument to be in the capability's recipients and to equal the recipient field, allows no field outside both the schema and the capability, requires classification to be in the capability allowlist, and requires title and body to be non-empty, printable, and within length bounds. A constraint set can forbid destinations or recipients that a capability allows.
 
@@ -52,6 +54,7 @@ Any of the following falsifies the claim:
 - The engine and the verifier disagree on the verdict, the denominator, or the voided voters for a package whose signatures verify.
 - Ballots over an old proposal hash approve the amended proposal.
 - A package that fails verification mints a capability.
+- A proposal without an explicit expiry mints a capability, or a capability without an expiry appends to the ledger.
 - A package decided under a rule other than the published policy mints a capability.
 - A revoked capability appends to the ledger.
 - An expired capability, or the child of a revoked parent, appends to the ledger.

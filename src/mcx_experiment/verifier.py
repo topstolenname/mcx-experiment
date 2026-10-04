@@ -33,6 +33,10 @@ def _threshold(value: object) -> Fraction | None:
     return exact
 
 
+def _positive_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
 def _recount(package: dict) -> dict:
     eligible_ids: dict[str, str] = {}
     for v in package["electorate"]:
@@ -185,6 +189,9 @@ def verify_package(
 ) -> dict:
     """Recompute a package. Fails closed on any malformed field.
 
+    The proposal must carry an explicit expiry, ``expires_at`` (a positive
+    integer, Unix seconds). There is no default; a proposal without one fails.
+
     Without ``policy`` the check is self-consistency: the electorate, required
     domains, and threshold are read from the package being checked, so a
     package decided under a weaker rule can still be valid. With ``policy``
@@ -219,6 +226,13 @@ def _verify(
         raise TypeError("required_domains is malformed")
     if not isinstance(package.get("require_domain_assent", True), bool):
         raise TypeError("require_domain_assent is malformed")
+    proposal = package["proposal"]
+    if not isinstance(proposal, dict):
+        raise TypeError("proposal is malformed")
+    if "expires_at" not in proposal:
+        errors.append("proposal_expiry_missing")
+    elif not _positive_int(proposal["expires_at"]):
+        errors.append("proposal_expiry_malformed")
     expected_hash = content_hash(
         {
             "decision_id": package["decision_id"],

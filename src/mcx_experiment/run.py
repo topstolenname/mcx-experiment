@@ -25,6 +25,7 @@ EXPANSION = {
     "scope": "research-agent-alpha",
     "destination": "https://uploads.example",
     "impact": "Adds an external write destination",
+    "expires_at": 4600,
 }
 
 VOTER_IDS = (

@@ -21,7 +21,12 @@ VOTERS = (
     Voter("agent-1", "agent"),
     Voter("agent-2", "agent"),
 )
-PROPOSAL = {"action": "grant_network_egress", "scope": "alpha", "destination": "https://uploads.example"}
+PROPOSAL = {
+    "action": "grant_network_egress",
+    "scope": "alpha",
+    "destination": "https://uploads.example",
+    "expires_at": 4600,
+}
 MCX = Snapshot("d2", DecisionType.D2, PROPOSAL, VOTERS, ("human", "infrastructure", "agent"), Fraction(2, 3), True)
 
 

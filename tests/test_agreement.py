@@ -17,7 +17,7 @@ VOTERS = (Voter("h1", "human"), Voter("i1", "infra"), Voter("a1", "agent"))
 
 
 def _snap(voters=VOTERS):
-    return Snapshot("d", DecisionType.D2, {"x": 1}, voters, ("human", "infra", "agent"), Fraction(2, 3), True)
+    return Snapshot("d", DecisionType.D2, {"x": 1, "expires_at": 4600}, voters, ("human", "infra", "agent"), Fraction(2, 3), True)
 
 
 def _verify(snap, ballots):

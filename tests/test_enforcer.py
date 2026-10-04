@@ -11,8 +11,10 @@ def enforcer():
                 tool="ticket.create",
                 destinations=("https://tickets.example",),
                 allowed_recipients=("ops@example.com",),
+                expires_at=4600,
             )
-        }
+        },
+        clock=lambda: 1000.0,
     )
 
 

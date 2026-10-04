@@ -12,6 +12,13 @@ from mcx_experiment.issue import issue
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate
 from mcx_experiment.verifier import verify_package, verify_receipt
 
+NOW = 1_000.0
+EXPIRES_AT = 4_600
+
+
+def _clock() -> float:
+    return NOW
+
 
 def _shared() -> list[Voter]:
     return [
@@ -28,7 +35,12 @@ def _snap(voters: list[Voter], domains: tuple[str, ...], assent: bool) -> Snapsh
     return Snapshot(
         "d2",
         DecisionType.D2,
-        {"action": "grant_network_egress", "scope": "alpha", "destination": "https://uploads.example"},
+        {
+            "action": "grant_network_egress",
+            "scope": "alpha",
+            "destination": "https://uploads.example",
+            "expires_at": EXPIRES_AT,
+        },
         tuple(voters),
         domains,
         Fraction(2, 3),
@@ -69,9 +81,21 @@ def run_catalog() -> list[dict]:
     forged_report = verify_package(forged, publics, recorder.public_key())
     denied = build_package(domain, coalition, keys, {"installed": False}, recorder)
     published = domain.policy()
-    enforcer = Enforcer()
+    enforcer = Enforcer(clock=_clock)
     minted = issue(denied, publics, recorder.public_key(), enforcer, "cap", policy=published)
-    issued = issue(honest, publics, recorder.public_key(), Enforcer(), "cap-ok", policy=published)
+    issued = issue(honest, publics, recorder.public_key(), Enforcer(clock=_clock), "cap-ok", policy=published)
+    # RT-20: the same approving ballots on a proposal with no expiry, and a capability with none.
+    open_ended = _snap(voters, ("human", "infrastructure", "agent"), True)
+    open_ended.proposal = {k: v for k, v in open_ended.proposal.items() if k != "expires_at"}
+    open_ballots = [Ballot(b.voter_id, b.domain, True, open_ended.proposal_hash) for b in approving]
+    open_package = build_package(open_ended, open_ballots, keys, {"installed": True}, recorder)
+    open_report = verify_package(open_package, publics, recorder.public_key())
+    open_gate = Enforcer(clock=_clock)
+    open_minted = issue(open_package, publics, recorder.public_key(), open_gate, "cap-open", policy=open_ended.policy())
+    unexpiring = Enforcer(clock=_clock)
+    unexpiring.grant(
+        Capability("cap-u", "alpha", DEFAULT_AUDIENCE, "ticket.create", ("https://uploads.example",), ("ops@example.com",))
+    )
     # RT-19: human-1's key signs approve and reject at one sequence, then approve at a
     # higher one. Under a "last ballot wins" reading this would complete domain assent.
     equivocating = [
@@ -98,7 +122,7 @@ def run_catalog() -> list[dict]:
     )
     admin_publics = {"admin-1": admin_keys["admin-1"].public_key()}
     admin_self_consistent = verify_package(admin_package, admin_publics, recorder.public_key())["valid"]
-    baseline_gate = Enforcer()
+    baseline_gate = Enforcer(clock=_clock)
     baseline_minted = issue(
         admin_package, admin_publics, recorder.public_key(), baseline_gate, "cap-admin", policy=published
     )
@@ -112,8 +136,10 @@ def run_catalog() -> list[dict]:
                 "ticket.create",
                 ("https://uploads.example",),
                 ("ops@example.com",),
+                expires_at=EXPIRES_AT,
             )
-        }
+        },
+        clock=_clock,
     )
     fields = {"title": "t", "body": "note", "recipient": "ops@example.com", "classification": "public"}
     child = gate.check(
@@ -166,10 +192,11 @@ def run_catalog() -> list[dict]:
         fields=fields,
         before_commit=lambda: clock.__setitem__("now", 1_002.0),
     )
-    chain = Enforcer()
+    chain = Enforcer(clock=_clock)
     chain.grant(
         Capability(
-            "cap-p", "alpha", DEFAULT_AUDIENCE, "ticket.create", ("https://uploads.example",), ("ops@example.com",)
+            "cap-p", "alpha", DEFAULT_AUDIENCE, "ticket.create", ("https://uploads.example",), ("ops@example.com",),
+            expires_at=EXPIRES_AT,
         )
     )
     chain.attenuate("cap-p", presenter="alpha", child_id="cap-c", child_scope="alpha/child")
@@ -183,7 +210,7 @@ def run_catalog() -> list[dict]:
         before_commit=lambda: chain.revoke("cap-p"),
     )
     forged_receipt = {**mismatch.to_dict(), "decision": "allow", "reason": "allowed"}
-    foreign = Enforcer()
+    foreign = Enforcer(clock=_clock)
     foreign.grant(
         Capability(
             "cap-f",
@@ -192,11 +219,20 @@ def run_catalog() -> list[dict]:
             "ticket.create",
             ("https://uploads.example",),
             ("ops@example.com",),
+            expires_at=EXPIRES_AT,
         )
     )
     wrong_audience = foreign.check(
         presenter="alpha",
         capability_id="cap-f",
+        tool="ticket.create",
+        destination="https://uploads.example",
+        recipient="ops@example.com",
+        fields=fields,
+    )
+    unexpiring_receipt = unexpiring.commit(
+        presenter="alpha",
+        capability_id="cap-u",
         tool="ticket.create",
         destination="https://uploads.example",
         recipient="ops@example.com",
@@ -232,6 +268,14 @@ def run_catalog() -> list[dict]:
             and equivocation_report["valid"]
             and not equivocation_report["recomputed_approved"]
             and equivocation_report["recomputed_voided"] == ["human-1"],
+        },
+        {
+            "id": "RT-20",
+            "ok": "proposal_expiry_missing" in open_report["errors"]
+            and open_minted is None
+            and open_gate.capabilities == {}
+            and unexpiring_receipt.reason == "capability_expiry_missing"
+            and unexpiring.ledger == [],
         },
         {"id": "RT-honest", "ok": verify_package(honest, publics, recorder.public_key())["valid"]},
     ]

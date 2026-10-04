@@ -6,7 +6,8 @@
   "proposal": {
     "action": "grant_network_egress",
     "scope": "research-agent-alpha",
-    "destination": "https://uploads.example"
+    "destination": "https://uploads.example",
+    "expires_at": 4600
   },
   "electorates": {
     "shared": {
