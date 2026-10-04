@@ -37,6 +37,10 @@ Copied from Section 7.2 and Appendix A, so this note cannot outrun the paper:
 python -m pip install -e ".[dev]"
 pytest -q
 python -m mcx_experiment.redteam
+mcx-scenario section-15.4
+python -m mcx_experiment.profiles
 ```
+
+The Section 15.4 electorates, rules, ballots, capability, and requests are in `src/mcx_experiment/scenarios/section-15.4.json`; `README.md` shows how to run an edited copy. `CLAIMS.md` maps each paper claim to its evidence.
 
 `artifacts/section-15.4.json` records the split the paper is allowed to cite; `python -m mcx_experiment.publish --summary` regenerates it, and a test checks the committed file is byte-identical to that output. `python -m mcx_experiment.publish` writes the packages, ballots, and receipts for a given run to `artifacts/run/section-15.4-full.json`, which is not committed. Keys are generated in process, so a later file will not byte-match an earlier one. The counting result should.

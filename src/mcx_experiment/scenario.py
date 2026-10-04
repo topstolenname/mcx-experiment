@@ -789,8 +789,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         if args.json:
             collected.append(to_json(report))
         else:
+            if item is not args.scenarios[0]:
+                print()
             print(render(report, availability))
-            print()
         if args.out is not None:
             _write(report, args.out)
     if args.json:
