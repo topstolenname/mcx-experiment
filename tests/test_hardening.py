@@ -6,7 +6,7 @@ from fractions import Fraction
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.enforcer import Capability, Enforcer
+from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, Enforcer
 from mcx_experiment.evidence import build_package, sign_ballot
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate, meets_threshold
 from mcx_experiment.verifier import verify_package
@@ -108,7 +108,7 @@ def _enforcer():
     cap = Capability(
         capability_id="c1",
         scope="agent",
-        audience="agent",
+        audience=DEFAULT_AUDIENCE,
         tool="ticket",
         destinations=("tickets.example",),
         allowed_recipients=("ok@example.com",),

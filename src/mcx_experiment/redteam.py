@@ -6,11 +6,11 @@ from fractions import Fraction
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.enforcer import Capability, Enforcer
+from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, Enforcer
 from mcx_experiment.evidence import build_package, sign_ballot
 from mcx_experiment.issue import issue
 from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate
-from mcx_experiment.verifier import verify_package
+from mcx_experiment.verifier import verify_package, verify_receipt
 
 
 def _shared() -> list[Voter]:
@@ -95,7 +95,7 @@ def run_catalog() -> list[dict]:
             "cap": Capability(
                 "cap",
                 "alpha",
-                "alpha",
+                DEFAULT_AUDIENCE,
                 "ticket.create",
                 ("https://uploads.example",),
                 ("ops@example.com",),
@@ -136,6 +136,59 @@ def run_catalog() -> list[dict]:
         fields=fields,
         before_commit=lambda: gate.revoke("cap"),
     )
+    clock = {"now": 1_000.0}
+    timed = Enforcer(clock=lambda: clock["now"])
+    timed.grant(
+        Capability(
+            "cap-t", "alpha", DEFAULT_AUDIENCE, "ticket.create",
+            ("https://uploads.example",), ("ops@example.com",), expires_at=1_001.0,
+        )
+    )
+    expired = timed.commit(
+        presenter="alpha",
+        capability_id="cap-t",
+        tool="ticket.create",
+        destination="https://uploads.example",
+        recipient="ops@example.com",
+        fields=fields,
+        before_commit=lambda: clock.__setitem__("now", 1_002.0),
+    )
+    chain = Enforcer()
+    chain.grant(
+        Capability(
+            "cap-p", "alpha", DEFAULT_AUDIENCE, "ticket.create", ("https://uploads.example",), ("ops@example.com",)
+        )
+    )
+    chain.attenuate("cap-p", presenter="alpha", child_id="cap-c", child_scope="alpha/child")
+    orphaned = chain.commit(
+        presenter="alpha/child",
+        capability_id="cap-c",
+        tool="ticket.create",
+        destination="https://uploads.example",
+        recipient="ops@example.com",
+        fields=fields,
+        before_commit=lambda: chain.revoke("cap-p"),
+    )
+    forged_receipt = {**mismatch.to_dict(), "decision": "allow", "reason": "allowed"}
+    foreign = Enforcer()
+    foreign.grant(
+        Capability(
+            "cap-f",
+            "alpha",
+            "https://other-resource.example",
+            "ticket.create",
+            ("https://uploads.example",),
+            ("ops@example.com",),
+        )
+    )
+    wrong_audience = foreign.check(
+        presenter="alpha",
+        capability_id="cap-f",
+        tool="ticket.create",
+        destination="https://uploads.example",
+        recipient="ops@example.com",
+        fields=fields,
+    )
     return [
         {"id": "RT-1", "ok": (not domain_result.approved) and domain_result.reason == "domain_assent_failed"},
         {"id": "RT-2", "ok": flat_result.approved},
@@ -154,6 +207,10 @@ def run_catalog() -> list[dict]:
         {"id": "RT-10", "ok": mismatch.reason == "param_recipient_mismatch"},
         {"id": "RT-11", "ok": restricted.reason == "param_classification_not_allowed"},
         {"id": "RT-12", "ok": raced.reason == "revoked_at_effect_time" and gate.ledger == []},
+        {"id": "RT-15", "ok": expired.reason == "capability_expired" and timed.ledger == []},
+        {"id": "RT-16", "ok": orphaned.reason == "revoked_at_effect_time" and chain.ledger == []},
+        {"id": "RT-17", "ok": not verify_receipt(forged_receipt, gate.public_key)["valid"]},
+        {"id": "RT-18", "ok": wrong_audience.reason == "audience_mismatch"},
         {"id": "RT-honest", "ok": verify_package(honest, publics, recorder.public_key())["valid"]},
     ]
 

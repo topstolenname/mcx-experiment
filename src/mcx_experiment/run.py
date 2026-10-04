@@ -11,7 +11,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from mcx_experiment.enforcer import Capability, Enforcer
+from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, Enforcer
 from mcx_experiment.evidence import build_package
 from mcx_experiment.protocol import DEFAULT_THRESHOLDS, Ballot, DecisionType, Snapshot, Voter, evaluate
 from mcx_experiment.verifier import verify_package
@@ -128,7 +128,7 @@ def d0_traces() -> list[dict]:
             "cap-parent": Capability(
                 "cap-parent",
                 scope="research-agent-alpha",
-                audience="research-agent-alpha",
+                audience=DEFAULT_AUDIENCE,
                 tool="ticket.create",
                 destinations=("https://tickets.example",),
                 allowed_recipients=("ops@example.com",),

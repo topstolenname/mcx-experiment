@@ -28,9 +28,17 @@ Without a published policy, verification is self-consistency only: the electorat
 
 ## Issuance and commit
 
-A capability may be minted only from a package that verifies against the published policy and whose verdict is approved. The issuer refuses to mint without a policy. The minted scope and destination must equal the proposal. Presentation by any other subject is denied. The recipient argument must equal the recipient field. Classification must be in the capability allowlist. Title and body must be non-empty, printable, and within length bounds.
+A capability may be minted only from a package that verifies against the published policy and whose verdict is approved. The issuer refuses to mint without a policy. The minted scope and destination must equal the proposal. The minted audience is the enforcer's own identifier, and the capability expires after `ttl_seconds` from the proposal (3600 if absent).
 
-Revocation increments a generation under the same lock as the final check and the ledger append. A commit that observes revocation does not append.
+Presentation by any subject other than the capability's scope is denied. A capability whose audience is not this enforcer is denied. A capability at or past its expiry is denied. If the clock cannot be read, every request is denied.
+
+Payload rules are data. A capability names a parameter schema in the enforcement bundle; a missing schema denies. The default ticket schema requires the recipient argument to be in the capability's recipients and to equal the recipient field, allows no field outside both the schema and the capability, requires classification to be in the capability allowlist, and requires title and body to be non-empty, printable, and within length bounds. A constraint set can forbid destinations or recipients that a capability allows.
+
+A holder may attenuate a capability for a child task. Every allowlist of the child must be a subset of the parent's, the child cannot outlive the parent, and the child is non-transferable. Revoking or expiring the parent denies the child.
+
+Revocation, and any replacement of a capability, increments that capability's generation under the same lock as the effect-time check and the ledger append. A commit checks once, then rereads the clock, revocation, expiry, and the generation and manifest hash of every capability in the delegation chain under the lock. Any change since the first check denies, and nothing is appended.
+
+Every check and commit emits a receipt signed with the enforcer's Ed25519 key. The receipt binds principal, scope, tool, resource, capability id, audience, manifest hash, constraint-set hash, enforcement-bundle hash, policy version, decision, reason, sanction level, check time, effect time, and the generations observed. Sanction levels are recorded, not applied.
 
 ## Breaks
 
@@ -42,4 +50,6 @@ Any of the following falsifies the claim:
 - A package that fails verification mints a capability.
 - A package decided under a rule other than the published policy mints a capability.
 - A revoked capability appends to the ledger.
+- An expired capability, or the child of a revoked parent, appends to the ledger.
+- A receipt whose decision was edited verifies under the enforcer's key.
 - The verifier reports an approval from a forged ballot while also reporting the package valid.

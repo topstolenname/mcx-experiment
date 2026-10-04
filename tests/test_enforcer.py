@@ -1,4 +1,4 @@
-from mcx_experiment.enforcer import Capability, Enforcer
+from mcx_experiment.enforcer import DEFAULT_AUDIENCE, Capability, Enforcer
 
 
 def enforcer():
@@ -7,7 +7,7 @@ def enforcer():
             "cap": Capability(
                 "cap",
                 scope="alpha",
-                audience="alpha",
+                audience=DEFAULT_AUDIENCE,
                 tool="ticket.create",
                 destinations=("https://tickets.example",),
                 allowed_recipients=("ops@example.com",),

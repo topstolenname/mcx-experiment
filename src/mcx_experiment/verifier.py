@@ -266,3 +266,55 @@ def _verify(
         "recomputed_reason": recomputed["reason"],
         "policy_pinned": policy is not None,
     }
+
+
+_RECEIPT_REQUIRED = (
+    "event_type",
+    "decision",
+    "reason",
+    "principal_id",
+    "tool",
+    "resource",
+    "capability_id",
+    "audience",
+    "constraint_set_hash",
+    "enforcement_bundle_hash",
+    "sanction_level",
+    "committed",
+)
+
+
+def verify_receipt(
+    receipt: dict,
+    enforcer_key: Ed25519PublicKey,
+    expected: dict | None = None,
+) -> dict:
+    """Check an enforcer receipt's signature and, optionally, pin its fields.
+
+    ``expected`` maps receipt fields (for example ``enforcement_bundle_hash``
+    or ``manifest_hash``) to the values a reviewer obtained independently. A
+    receipt that does not bind the bundle does not support a claim about
+    which policy was enforced.
+    """
+    errors = []
+    if not isinstance(receipt, dict):
+        return {"valid": False, "errors": ["malformed_receipt"]}
+    for name in _RECEIPT_REQUIRED:
+        if name not in receipt:
+            errors.append(f"missing_field:{name}")
+    if receipt.get("decision") == "allow" and not receipt.get("manifest_hash"):
+        errors.append("allow_without_manifest_hash")
+    if receipt.get("committed") and not receipt.get("effect_time"):
+        errors.append("commit_without_effect_time")
+    body = {k: v for k, v in receipt.items() if k != "enforcer_signature"}
+    signature = receipt.get("enforcer_signature")
+    try:
+        if not isinstance(signature, str) or not signature.startswith("ed25519:"):
+            raise ValueError("signature scheme")
+        enforcer_key.verify(base64.b64decode(signature[len("ed25519:"):]), canonical(body))
+    except Exception:
+        errors.append("enforcer_signature_invalid")
+    for name, value in (expected or {}).items():
+        if receipt.get(name) != value:
+            errors.append(f"pin_mismatch:{name}")
+    return {"valid": not errors, "errors": errors}

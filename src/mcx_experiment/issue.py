@@ -7,6 +7,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from mcx_experiment.enforcer import Capability, Enforcer
 from mcx_experiment.verifier import verify_package
 
+DEFAULT_TTL_SECONDS = 3600
+
 
 def issue(
     package: dict,
@@ -30,14 +32,22 @@ def issue(
     if not report["valid"] or not package["verdict"]["approved"]:
         return None
     proposal = package["proposal"]
+    now = enforcer._now()
+    if now is None:
+        return None
+    ttl = proposal.get("ttl_seconds", DEFAULT_TTL_SECONDS)
+    if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl <= 0:
+        return None
     capability = Capability(
         capability_id=capability_id,
         scope=proposal["scope"],
-        audience=proposal["scope"],
+        audience=enforcer.audience,
+        expires_at=now + ttl,
+        policy_version=f"{package['decision_id']}@{package['proposal_hash'][:12]}",
         tool="ticket.create",
         destinations=(proposal["destination"],),
         allowed_recipients=("ops@example.com",),
         allowed_classifications=("public",),
     )
-    enforcer.capabilities[capability_id] = capability
+    enforcer.grant(capability)
     return capability
