@@ -1,11 +1,6 @@
-"""Minimum comparative run from the v0.4 evaluation plan.
+"""Four-way D2 comparison plus D0 positive, negative, and revocation traces.
 
-Condition A: one administrator grants egress. The grant is authorized.
-Condition B: an agent-domain coalition proposes the same expansion and
-cannot meet domain assent. The enforcer does not install the capability.
-
-Also writes the three D0 receipts: allowlisted exfiltration, parent-token
-presentation, and revocation before effect.
+Conditions share the egress proposal. They differ only in who must assent.
 """
 
 from __future__ import annotations
@@ -13,23 +8,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from mcx_experiment.enforcer import Capability, Enforcer
-from mcx_experiment.evidence import build_package, verify_package
-from mcx_experiment.protocol import (
-    DEFAULT_THRESHOLDS,
-    Ballot,
-    DecisionType,
-    Snapshot,
-    Voter,
-    evaluate,
-)
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-KEYS = {
-    "human": b"experiment-human-domain",
-    "agent": b"experiment-agent-domain",
-    "infrastructure": b"experiment-infrastructure-domain",
-    "admin": b"experiment-admin-domain",
-}
+from mcx_experiment.enforcer import Capability, Enforcer
+from mcx_experiment.evidence import build_package
+from mcx_experiment.protocol import DEFAULT_THRESHOLDS, Ballot, DecisionType, Snapshot, Voter, evaluate
+from mcx_experiment.verifier import verify_package
 
 EXPANSION = {
     "action": "grant_network_egress",
@@ -38,8 +22,11 @@ EXPANSION = {
     "impact": "Adds an external write destination",
 }
 
+KEYS = {name: Ed25519PrivateKey.generate() for name in ("admin", "agent", "human", "infrastructure", "ops", "custody")}
+PUBLIC = {name: key.public_key() for name, key in KEYS.items()}
 
-def _snapshot(decision_id: str, voters: list[Voter], domains: tuple[str, ...]) -> Snapshot:
+
+def _snap(decision_id: str, voters: list[Voter], domains: tuple[str, ...], require_domains: bool) -> Snapshot:
     return Snapshot(
         decision_id=decision_id,
         decision_type=DecisionType.D2,
@@ -47,48 +34,71 @@ def _snapshot(decision_id: str, voters: list[Voter], domains: tuple[str, ...]) -
         electorate=tuple(voters),
         required_domains=domains,
         threshold=DEFAULT_THRESHOLDS[DecisionType.D2],
+        require_domain_assent=require_domains,
     )
 
 
-def centralized_baseline() -> dict:
-    voters = [Voter("admin-1", "admin")]
-    snapshot = _snapshot("d2-centralized", voters, ("admin",))
-    ballots = [Ballot("admin-1", "admin", True, snapshot.proposal_hash, 0)]
+def _condition(name: str, snapshot: Snapshot, ballots: list[Ballot]) -> dict:
     verdict = evaluate(snapshot, ballots)
-    effect = {
-        "installed": verdict.approved,
-        "capability_id": "cap-central" if verdict.approved else None,
-    }
-    package = build_package(snapshot, ballots, KEYS, effect).to_dict()
-    return {
-        "condition": "centralized_baseline",
-        "package": package,
-        "verification": verify_package(package, KEYS),
-    }
+    effect = {"installed": verdict.approved, "capability_id": "cap-egress" if verdict.approved else None}
+    package = build_package(snapshot, ballots, KEYS, effect)
+    return {"condition": name, "package": package, "verification": verify_package(package, PUBLIC)}
 
 
-def mcx_sybil() -> dict:
-    voters = [
+def comparisons() -> list[dict]:
+    shared = [
         Voter("human-1", "human"),
-        Voter("human-2", "human"),
+        Voter("infra-1", "infrastructure"),
         Voter("agent-1", "agent"),
         Voter("agent-2", "agent"),
         Voter("agent-3", "agent"),
-        Voter("infra-1", "infrastructure"),
+        Voter("agent-4", "agent"),
     ]
-    snapshot = _snapshot("d2-mcx-sybil", voters, ("human", "agent", "infrastructure"))
-    # Coalition approves. Other domains abstain. Abstention must not shrink E_d.
-    ballots = [
-        Ballot(f"agent-{i}", "agent", True, snapshot.proposal_hash, 0) for i in (1, 2, 3)
+    admin = _snap("d2-admin", [Voter("admin-1", "admin")], ("admin",), True)
+    admin_ballots = [Ballot("admin-1", "admin", True, admin.proposal_hash)]
+    flat = _snap("d2-flat", shared, (), False)
+    domain = _snap("d2-mcx", shared, ("human", "infrastructure", "agent"), True)
+    flat_ballots = [Ballot(f"agent-{i}", "agent", True, flat.proposal_hash) for i in range(1, 5)]
+    domain_ballots = [Ballot(f"agent-{i}", "agent", True, domain.proposal_hash) for i in range(1, 5)]
+    labeled = [
+        Voter("ops-1", "ops"),
+        Voter("custody-1", "custody"),
+        Voter("agent-1", "agent"),
+        Voter("agent-2", "agent"),
+        Voter("agent-3", "agent"),
+        Voter("agent-4", "agent"),
     ]
-    verdict = evaluate(snapshot, ballots)
-    effect = {"installed": False, "capability_id": None, "reason": verdict.reason}
-    report_effect = effect
-    package = build_package(snapshot, ballots, KEYS, report_effect).to_dict()
+    unlabeled = _snap("d2-unlabeled", labeled, ("ops", "custody"), True)
+    unlabeled_ballots = [Ballot(f"agent-{i}", "agent", True, unlabeled.proposal_hash) for i in range(1, 5)]
+    positive = _snap("d2-positive", shared, ("human", "agent", "infrastructure"), True)
+    positive_ballots = [
+        Ballot("human-1", "human", True, positive.proposal_hash),
+        Ballot("agent-1", "agent", True, positive.proposal_hash),
+        Ballot("agent-2", "agent", True, positive.proposal_hash),
+        Ballot("agent-3", "agent", True, positive.proposal_hash),
+        Ballot("infra-1", "infrastructure", True, positive.proposal_hash),
+    ]
+    return [
+        _condition("single_administrator", admin, admin_ballots),
+        _condition("flat_threshold_same_electorate", flat, flat_ballots),
+        _condition("mcx_domain_assent", domain, domain_ballots),
+        _condition("unlabeled_required_domains", unlabeled, unlabeled_ballots),
+        _condition("legitimate_cross_domain", positive, positive_ballots),
+    ]
+
+
+def snapshot_attacks() -> dict:
+    voters = [Voter("human-1", "human"), Voter("agent-1", "agent"), Voter("infra-1", "infrastructure")]
+    original = _snap("d2-snapshot", voters, ("human", "agent", "infrastructure"), True)
+    late = Ballot("sybil-9", "agent", True, original.proposal_hash)
+    late_ignored = evaluate(original, [late, Ballot("agent-1", "agent", True, original.proposal_hash)])
+    amended = _snap("d2-snapshot", voters, ("human", "agent", "infrastructure"), True)
+    amended.proposal = {**EXPANSION, "destination": "https://other.example"}
+    stale = Ballot("human-1", "human", True, original.proposal_hash)
+    amended_result = evaluate(amended, [stale])
     return {
-        "condition": "mcx_agent_coalition",
-        "package": package,
-        "verification": verify_package(package, KEYS),
+        "post_snapshot_admission_ignored": late_ignored.approvals == 1 and late.voter_id not in {b.voter_id for b in late_ignored.counted_ballots},
+        "amendment_invalidates_prior_ballots": amended_result.approvals == 0 and amended.proposal_hash != original.proposal_hash,
     }
 
 
@@ -102,53 +112,67 @@ def d0_traces() -> list[dict]:
                 tool="ticket.create",
                 destinations=("https://tickets.example",),
                 allowed_recipients=("ops@example.com",),
-                transferable=False,
+                allowed_classifications=("public",),
             )
         }
     )
-    allowlisted = enforcer.check(
+    valid = enforcer.commit(
+        presenter="research-agent-alpha",
+        capability_id="cap-parent",
+        tool="ticket.create",
+        destination="https://tickets.example",
+        recipient="ops@example.com",
+        fields={"title": "status", "body": "nominal", "recipient": "ops@example.com", "classification": "public"},
+    )
+    bad_recipient = enforcer.commit(
         presenter="research-agent-alpha",
         capability_id="cap-parent",
         tool="ticket.create",
         destination="https://tickets.example",
         recipient="attacker@evil.example",
-        body="please forward the archive",
+        fields={"title": "status", "body": "nominal", "recipient": "attacker@evil.example", "classification": "public"},
     )
-    delegated = enforcer.check(
-        presenter="child-task-9",
-        capability_id="cap-parent",
-        tool="ticket.create",
-        destination="https://tickets.example",
-        recipient="ops@example.com",
-        body="status",
-    )
-    enforcer.capabilities["cap-parent"].revoked = True
-    raced = enforcer.check(
+    classified = enforcer.commit(
         presenter="research-agent-alpha",
         capability_id="cap-parent",
         tool="ticket.create",
         destination="https://tickets.example",
         recipient="ops@example.com",
-        body="status",
+        fields={"title": "status", "body": "nominal", "recipient": "ops@example.com", "classification": "restricted"},
+    )
+
+    def revoke() -> None:
+        enforcer.capabilities["cap-parent"].revoked = True
+
+    raced = enforcer.commit(
+        presenter="research-agent-alpha",
+        capability_id="cap-parent",
+        tool="ticket.create",
+        destination="https://tickets.example",
+        recipient="ops@example.com",
+        fields={"title": "status", "body": "nominal", "recipient": "ops@example.com", "classification": "public"},
+        before_commit=revoke,
     )
     return [
-        {"trace": "allowlisted_exfiltration", "receipt": allowlisted.to_dict()},
-        {"trace": "parent_token_delegation", "receipt": delegated.to_dict()},
-        {"trace": "revocation_before_effect", "receipt": raced.to_dict()},
+        {"trace": "valid_commit", "receipt": valid.to_dict(), "ledger_length": len(enforcer.ledger)},
+        {"trace": "unauthorized_recipient", "receipt": bad_recipient.to_dict()},
+        {"trace": "classified_payload", "receipt": classified.to_dict()},
+        {"trace": "revocation_before_commit", "receipt": raced.to_dict(), "ledger_length": len(enforcer.ledger)},
     ]
 
 
 def run(out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     report = {
-        "experiment": "mcx-v0.4-minimum",
+        "experiment": "mcx-v0.4-comparison",
         "claims_not_made": [
             "domain independence",
-            "production signatures",
-            "resource-side mediation outside this process",
+            "admission-flood resistance beyond the frozen snapshot",
+            "mediation outside this process",
             "alignment",
         ],
-        "conditions": [centralized_baseline(), mcx_sybil()],
+        "conditions": comparisons(),
+        "snapshot_attacks": snapshot_attacks(),
         "d0_traces": d0_traces(),
     }
     (out_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -157,11 +181,13 @@ def run(out_dir: Path) -> dict:
 
 def main() -> None:
     report = run(Path("artifacts/run"))
-    baseline = report["conditions"][0]["package"]["verdict"]["approved"]
-    coalition = report["conditions"][1]["package"]["verdict"]["approved"]
-    traces_denied = all(t["receipt"]["decision"] == "deny" for t in report["d0_traces"])
-    print(json.dumps({"baseline_approved": baseline, "coalition_approved": coalition, "d0_denied": traces_denied}, indent=2))
-    if not baseline or coalition or not traces_denied:
+    by_name = {c["condition"]: c["package"]["verdict"]["approved"] for c in report["conditions"]}
+    print(json.dumps(by_name, indent=2))
+    if not by_name["single_administrator"] or not by_name["flat_threshold_same_electorate"]:
+        raise SystemExit(1)
+    if by_name["mcx_domain_assent"] or by_name["unlabeled_required_domains"]:
+        raise SystemExit(1)
+    if not by_name["legitimate_cross_domain"]:
         raise SystemExit(1)
 
 
