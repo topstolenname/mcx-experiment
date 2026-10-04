@@ -73,17 +73,29 @@ def random_ballots(rng: random.Random, snap: Snapshot) -> list[Ballot]:
     return ballots
 
 
+def oracle_equivocators(snap: Snapshot, ballots: list[Ballot]) -> set[str]:
+    """Eligible members with two different signed ballots at one sequence on the active hash."""
+    members = {v.voter_id for v in snap.electorate if v.eligible}
+    out = set()
+    for voter_id in members:
+        mine = [b for b in ballots if b.voter_id == voter_id and b.proposal_hash == snap.proposal_hash]
+        for sequence in {b.sequence for b in mine}:
+            if len({(b.domain, b.approve) for b in mine if b.sequence == sequence}) > 1:
+                out.add(voter_id)
+    return out
+
+
 def oracle(snap: Snapshot, ballots: list[Ballot]) -> tuple[bool, int, int]:
     """Section 7.1 written out directly, without sharing code with the engine or the verifier."""
     members = {v.voter_id: v.domain for v in snap.electorate if v.eligible}
-    valid = [b for b in ballots if b.proposal_hash == snap.proposal_hash and members.get(b.voter_id) == b.domain]
+    on_hash = [b for b in ballots if b.proposal_hash == snap.proposal_hash]
+    equivocated = oracle_equivocators(snap, ballots)
+    valid = [b for b in on_hash if members.get(b.voter_id) == b.domain and b.voter_id not in equivocated]
     final: dict[str, bool] = {}
     for voter_id in {b.voter_id for b in valid}:
         mine = [b for b in valid if b.voter_id == voter_id]
         top = max(b.sequence for b in mine)
-        choices = {b.approve for b in mine if b.sequence == top}
-        if len(choices) == 1:
-            final[voter_id] = choices.pop()
+        (final[voter_id],) = {b.approve for b in mine if b.sequence == top}
     approvers = [v for v, approve in final.items() if approve]
     size = len(members)
     quorum = all(r in members.values() for r in snap.required_domains)
@@ -362,3 +374,164 @@ def test_enforcer_allows_exactly_the_requests_the_capability_permits(seed):
         assert receipt.committed is (receipt.decision == "allow")
         assert len(gate.ledger) == int(receipt.committed)
         assert verify_receipt(receipt.to_dict(), gate.public_key)["valid"]
+
+
+# ---------------------------------------------------------------- equivocation
+
+EQUIVOCATION_SEED = 20261004
+EQUIVOCATION_CASES = 300
+
+
+def equivocation_ballots(rng: random.Random, snap: Snapshot) -> list[Ballot]:
+    """Random ballots plus deliberate same-sequence cases: conflicting approve, conflicting
+    domain, identical resubmission, a later higher-sequence ballot, and a stale-hash twin."""
+    ballots = random_ballots(rng, snap)
+    h = snap.proposal_hash
+    for voter in rng.sample(snap.electorate, rng.randint(1, len(snap.electorate))):
+        sequence = rng.randint(0, 3)
+        approve = rng.random() < 0.7
+        base = Ballot(voter.voter_id, voter.domain, approve, h, sequence)
+        kind = rng.choice(["approve", "domain", "identical", "stale", "none"])
+        ballots.append(base)
+        if kind == "approve":
+            ballots.append(Ballot(voter.voter_id, voter.domain, not approve, h, sequence))
+        elif kind == "domain":
+            ballots.append(Ballot(voter.voter_id, voter.domain + "-other", approve, h, sequence))
+        elif kind == "identical":
+            ballots.append(Ballot(voter.voter_id, voter.domain, approve, h, sequence))
+        elif kind == "stale":
+            ballots.append(Ballot(voter.voter_id, voter.domain, not approve, "stale-" + h[:8], sequence))
+        if rng.random() < 0.6:
+            ballots.append(Ballot(voter.voter_id, voter.domain, True, h, sequence + rng.randint(1, 3)))
+    rng.shuffle(ballots)
+    return ballots
+
+
+def _equivocation_disagreements(seed: int, cases: int) -> tuple[int, dict]:
+    """Run engine and verifier on the same packages; return how many cases disagree, plus coverage counts."""
+    rng = random.Random(seed)
+    disagreements = 0
+    coverage = {"voided": 0, "voided_despite_later_ballot": 0, "identical_only": 0}
+    for _ in range(cases):
+        snap = random_snapshot(rng)
+        ballots = equivocation_ballots(rng, snap)
+        verdict = evaluate(snap, ballots)
+        package = json.loads(json.dumps(_package(snap, ballots)))
+        report = verify_package(package, _publics(), RECORDER.public_key())
+        expected = sorted(oracle_equivocators(snap, ballots))
+        agree = (
+            report["valid"]
+            and report["recomputed_approved"] == verdict.approved
+            and report["recomputed_reason"] == verdict.reason
+            and report["recomputed_voided"] == verdict.voided_voters == expected
+            and not {b.voter_id for b in verdict.counted_ballots} & set(expected)
+            and verdict.electorate_size == sum(v.eligible for v in snap.electorate)
+        )
+        disagreements += not agree
+        if expected:
+            coverage["voided"] += 1
+        for voter_id in expected:
+            mine = [b for b in ballots if b.voter_id == voter_id and b.proposal_hash == snap.proposal_hash]
+            top = max(b.sequence for b in mine)
+            if len({(b.domain, b.approve) for b in mine if b.sequence == top}) == 1:
+                coverage["voided_despite_later_ballot"] += 1
+        on_hash = [(b.voter_id, b.sequence) for b in ballots if b.proposal_hash == snap.proposal_hash]
+        if len(on_hash) != len(set(on_hash)) and not expected:
+            coverage["identical_only"] += 1
+    return disagreements, coverage
+
+
+def test_engine_and_verifier_agree_on_equivocation():
+    disagreements, coverage = _equivocation_disagreements(EQUIVOCATION_SEED, EQUIVOCATION_CASES)
+    assert disagreements == 0
+    # The generator actually exercises the cases the rule is about.
+    assert coverage["voided"] > 50, coverage
+    assert coverage["voided_despite_later_ballot"] > 20, coverage
+    assert coverage["identical_only"] > 10, coverage
+
+
+def _ignore_equivocation(ballots, proposal_hash):
+    return set()
+
+
+def _old_rule_highest_sequence_only(ballots, proposal_hash):
+    """The rule before this change: a conflict voids only if it is at the voter's highest sequence."""
+    mine: dict[str, list] = {}
+    for b in ballots:
+        if b.proposal_hash == proposal_hash:
+            mine.setdefault(b.voter_id, []).append(b)
+    out = set()
+    for voter_id, items in mine.items():
+        top = max(b.sequence for b in items)
+        if len({(b.domain, b.approve) for b in items if b.sequence == top}) > 1:
+            out.add(voter_id)
+    return out
+
+
+def _approve_only(ballots, proposal_hash):
+    """Ignores conflicting domain claims at one sequence."""
+    seen: dict = {}
+    out = set()
+    for b in ballots:
+        if b.proposal_hash == proposal_hash and seen.setdefault((b.voter_id, b.sequence), b.approve) != b.approve:
+            out.add(b.voter_id)
+    return out
+
+
+def _voids_identical_duplicates(ballots, proposal_hash):
+    """Too eager: treats an identical resubmission as equivocation."""
+    seen: set = set()
+    out = set()
+    for b in ballots:
+        if b.proposal_hash != proposal_hash:
+            continue
+        if (b.voter_id, b.sequence) in seen:
+            out.add(b.voter_id)
+        seen.add((b.voter_id, b.sequence))
+    return out
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [_ignore_equivocation, _old_rule_highest_sequence_only, _approve_only, _voids_identical_duplicates],
+)
+def test_equivocation_check_catches_a_deliberately_broken_engine(monkeypatch, broken):
+    """The same comparison must fail when the engine's equivocation rule is wrong."""
+    from mcx_experiment import protocol
+
+    monkeypatch.setattr(protocol, "equivocators", broken)
+    disagreements, _ = _equivocation_disagreements(EQUIVOCATION_SEED, EQUIVOCATION_CASES)
+    assert disagreements > 0, broken.__name__
+
+
+def _no_validity_check(snapshot, ballots):
+    return [b for b in ballots if b.proposal_hash == snapshot.proposal_hash]
+
+
+def _strict_threshold(approvals, electorate_size, threshold):
+    return electorate_size > 0 and Fraction(approvals, electorate_size) > Fraction(threshold)
+
+
+@pytest.mark.parametrize(
+    "attribute, broken",
+    [
+        ("valid_ballots", _no_validity_check),
+        ("equivocators", _ignore_equivocation),
+        ("meets_threshold", _strict_threshold),
+        ("MIN_REQUIRED_DOMAINS", 1),
+    ],
+)
+def test_oracle_catches_a_deliberately_broken_engine(monkeypatch, attribute, broken):
+    """The oracle comparison above would notice each of these engine mistakes."""
+    from mcx_experiment import protocol
+
+    monkeypatch.setattr(protocol, attribute, broken)
+    caught = 0
+    for seed in SEEDS:
+        rng = random.Random(seed)
+        for _ in range(CASES):
+            snap = random_snapshot(rng)
+            ballots = equivocation_ballots(rng, snap) if attribute == "equivocators" else random_ballots(rng, snap)
+            result = evaluate(snap, ballots)
+            caught += (result.approved, result.approvals, result.electorate_size) != oracle(snap, ballots)
+    assert caught > 0, attribute

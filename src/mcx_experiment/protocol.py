@@ -161,6 +161,7 @@ class Approval:
     domain_assent: dict[str, bool]
     quorum: bool
     counted_ballots: list[Ballot] = field(default_factory=list)
+    voided_voters: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -182,6 +183,7 @@ class Approval:
                 }
                 for b in self.counted_ballots
             ],
+            "voided_voters": list(self.voided_voters),
         }
 
 
@@ -201,26 +203,48 @@ def valid_ballots(snapshot: Snapshot, ballots: Iterable[Ballot]) -> list[Ballot]
     ]
 
 
-def last_ballots(ballots: Iterable[Ballot], proposal_hash: str) -> dict[str, Ballot]:
-    """Latest ballot per voter. Conflicting ballots at the same sequence void the voter.
+def equivocators(ballots: Iterable[Ballot], proposal_hash: str) -> set[str]:
+    """Voters who signed two different ballots at the same sequence for this proposal.
 
-    The result does not depend on list order: a strictly higher sequence
-    replaces, an identical resubmission is a no-op, and a disagreement at the
-    highest sequence voids that voter.
+    Two ballots conflict when they share voter, proposal hash, and sequence
+    and differ in any other signed field (approve or domain). An identical
+    resubmission is not a conflict. Ballots on another proposal hash are a
+    different proposal and are ignored. Domain validity is not checked first:
+    a key that signed two different domain claims at one sequence has
+    equivocated just as much as one that signed approve and reject.
+
+    Equivocation is treated as evidence of key compromise. The voter is voided
+    for the proposal outright, whatever they signed at other sequences.
     """
-    chosen: dict[str, Ballot] = {}
-    conflicted: set[str] = set()
+    seen: dict[tuple[str, int], tuple[str, bool]] = {}
+    voided: set[str] = set()
     for ballot in ballots:
         if ballot.proposal_hash != proposal_hash:
+            continue
+        content = (ballot.domain, ballot.approve)
+        first = seen.setdefault((ballot.voter_id, ballot.sequence), content)
+        if first != content:
+            voided.add(ballot.voter_id)
+    return voided
+
+
+def last_ballots(ballots: Iterable[Ballot], proposal_hash: str) -> dict[str, Ballot]:
+    """Latest ballot per voter, without the voters who equivocated.
+
+    The result does not depend on list order: a strictly higher sequence
+    replaces, an identical resubmission is a no-op, and any voter with two
+    different ballots at one sequence (at any sequence, not only the highest)
+    is left out entirely.
+    """
+    ballots = [b for b in ballots if b.proposal_hash == proposal_hash]
+    voided = equivocators(ballots, proposal_hash)
+    chosen: dict[str, Ballot] = {}
+    for ballot in ballots:
+        if ballot.voter_id in voided:
             continue
         current = chosen.get(ballot.voter_id)
         if current is None or ballot.sequence > current.sequence:
             chosen[ballot.voter_id] = ballot
-            conflicted.discard(ballot.voter_id)
-        elif ballot.sequence == current.sequence and ballot.approve != current.approve:
-            conflicted.add(ballot.voter_id)
-    for voter_id in conflicted:
-        chosen.pop(voter_id, None)
     return chosen
 
 
@@ -231,7 +255,15 @@ def evaluate(snapshot: Snapshot, ballots: Iterable[Ballot]) -> Approval:
         any(v.domain == domain for v in eligible.values())
         for domain in snapshot.required_domains
     )
-    counted = list(last_ballots(valid_ballots(snapshot, ballots), snapshot.proposal_hash).values())
+    ballots = list(ballots)
+    # Equivocation is judged on every ballot for this proposal, before validity:
+    # a voided voter stays in the denominator and contributes no approval.
+    voided = equivocators(ballots, snapshot.proposal_hash) & set(eligible)
+    counted = [
+        b
+        for b in last_ballots(valid_ballots(snapshot, ballots), snapshot.proposal_hash).values()
+        if b.voter_id not in voided
+    ]
     approvals = [b for b in counted if b.approve]
     ratio = (len(approvals) / electorate_size) if electorate_size else 0.0
     assent = {
@@ -273,6 +305,7 @@ def evaluate(snapshot: Snapshot, ballots: Iterable[Ballot]) -> Approval:
         domain_assent=assent,
         quorum=quorum,
         counted_ballots=sorted(counted, key=lambda b: b.voter_id),
+        voided_voters=sorted(voided),
     )
 
 

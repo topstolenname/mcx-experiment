@@ -10,7 +10,9 @@ On a frozen electorate, four approving ballots from one domain clear a two-third
 
 Inputs are a snapshot and a list of ballots. The snapshot hash covers the decision id, decision type, proposal, electorate, required domains, threshold, and whether domain assent is required.
 
-A ballot is valid only if its proposal hash equals the snapshot hash, its voter is eligible, and its domain equals that voter's domain. Validity is decided first. Among a voter's valid ballots, the highest sequence wins, so an invalid ballot at a higher sequence neither masks nor replaces a valid one. Two valid ballots from the same voter at that highest sequence that disagree void that voter. An identical resubmission is not a disagreement. The counted set does not depend on the order of the ballot list.
+A ballot is valid only if its proposal hash equals the snapshot hash, its voter is eligible, and its domain equals that voter's domain. Validity is decided first. Among a voter's valid ballots, the highest sequence wins, so an invalid ballot at a higher sequence neither masks nor replaces a valid one. The counted set does not depend on the order of the ballot list.
+
+A voter equivocates on a proposal if two of their ballots carry the active proposal hash and the same sequence and differ in any other signed field (`approve` or `domain`). This is judged over every such ballot, before domain validity is checked. In the verifier only ballots whose signature verifies under that voter's key are considered, so a forged ballot cannot void anyone. An equivocating voter is voided for that proposal outright: none of their ballots count, at any sequence, including a later higher-sequence ballot. Equivocation is treated as evidence of key compromise, and the rule fails closed. A voided voter who is eligible stays in the denominator and contributes no approval. Identical ballots at the same sequence are one ballot, not an equivocation. A ballot on another proposal hash belongs to another proposal and never voids anyone. The verdict lists the voided eligible members, sorted, as `voided_voters`; the verifier recomputes that list and fails the package if it differs.
 
 A snapshot that lists the same voter id twice is malformed and is rejected.
 
@@ -46,6 +48,8 @@ Any of the following falsifies the claim:
 
 - A domain-assent decision is approved by ballots from only one domain.
 - A voter added after the snapshot changes the counted set.
+- A voter who signed two different ballots at one sequence for a proposal contributes an approval to it.
+- The engine and the verifier disagree on the verdict, the denominator, or the voided voters for a package whose signatures verify.
 - Ballots over an old proposal hash approve the amended proposal.
 - A package that fails verification mints a capability.
 - A package decided under a rule other than the published policy mints a capability.

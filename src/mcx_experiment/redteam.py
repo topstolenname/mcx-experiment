@@ -72,6 +72,19 @@ def run_catalog() -> list[dict]:
     enforcer = Enforcer()
     minted = issue(denied, publics, recorder.public_key(), enforcer, "cap", policy=published)
     issued = issue(honest, publics, recorder.public_key(), Enforcer(), "cap-ok", policy=published)
+    # RT-19: human-1's key signs approve and reject at one sequence, then approve at a
+    # higher one. Under a "last ballot wins" reading this would complete domain assent.
+    equivocating = [
+        Ballot("human-1", "human", True, domain.proposal_hash, 1),
+        Ballot("human-1", "human", False, domain.proposal_hash, 1),
+        Ballot("human-1", "human", True, domain.proposal_hash, 2),
+        Ballot("infra-1", "infrastructure", True, domain.proposal_hash),
+        Ballot("agent-1", "agent", True, domain.proposal_hash),
+        Ballot("agent-2", "agent", True, domain.proposal_hash),
+    ]
+    equivocation = evaluate(domain, equivocating)
+    equivocation_package = build_package(domain, equivocating, keys, {"installed": False}, recorder)
+    equivocation_report = verify_package(equivocation_package, publics, recorder.public_key())
     admin_snap = Snapshot(
         "d2", DecisionType.D2, domain.proposal, (Voter("admin-1", "admin"),), (), Fraction(2, 3), False
     )
@@ -211,6 +224,15 @@ def run_catalog() -> list[dict]:
         {"id": "RT-16", "ok": orphaned.reason == "revoked_at_effect_time" and chain.ledger == []},
         {"id": "RT-17", "ok": not verify_receipt(forged_receipt, gate.public_key)["valid"]},
         {"id": "RT-18", "ok": wrong_audience.reason == "audience_mismatch"},
+        {
+            "id": "RT-19",
+            "ok": (not equivocation.approved)
+            and equivocation.voided_voters == ["human-1"]
+            and equivocation.electorate_size == 6
+            and equivocation_report["valid"]
+            and not equivocation_report["recomputed_approved"]
+            and equivocation_report["recomputed_voided"] == ["human-1"],
+        },
         {"id": "RT-honest", "ok": verify_package(honest, publics, recorder.public_key())["valid"]},
     ]
 

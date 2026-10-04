@@ -41,22 +41,31 @@ def _recount(package: dict) -> dict:
     electorate_size = len(eligible_ids)
     required = package["required_domains"]
     quorum = all(any(d == domain for d in eligible_ids.values()) for domain in required)
+    # Equivocation: two signed ballots from one voter at one sequence on this
+    # proposal that differ in any other signed field. Judged before domain
+    # validity, and it voids the voter whatever they signed at other sequences.
+    first_seen: dict[tuple[str, int], tuple[str, bool]] = {}
+    voided: set[str] = set()
+    for ballot in package["ballots"]:
+        if ballot["proposal_hash"] != package["proposal_hash"]:
+            continue
+        slot = (ballot["voter_id"], ballot["sequence"])
+        content = (ballot["domain"], ballot["approve"])
+        if first_seen.setdefault(slot, content) != content:
+            voided.add(ballot["voter_id"])
+    voided &= set(eligible_ids)
     latest: dict[str, dict] = {}
-    conflicted: set[str] = set()
     for ballot in package["ballots"]:
         if ballot["proposal_hash"] != package["proposal_hash"]:
             continue
         if eligible_ids.get(ballot["voter_id"]) != ballot["domain"]:
             continue
         voter_id = ballot["voter_id"]
+        if voter_id in voided:
+            continue
         current = latest.get(voter_id)
         if current is None or ballot["sequence"] > current["sequence"]:
             latest[voter_id] = ballot
-            conflicted.discard(voter_id)
-        elif ballot["sequence"] == current["sequence"] and ballot["approve"] != current["approve"]:
-            conflicted.add(voter_id)
-    for voter_id in conflicted:
-        latest.pop(voter_id, None)
     approvals = [b for b in latest.values() if b["approve"]]
     ratio = (len(approvals) / electorate_size) if electorate_size else 0.0
     assent = {domain: any(b["domain"] == domain for b in approvals) for domain in required}
@@ -88,6 +97,7 @@ def _recount(package: dict) -> dict:
         "electorate_size": electorate_size,
         "approvals": len(approvals),
         "approval_ratio": ratio,
+        "voided_voters": sorted(voided),
     }
 
 
@@ -188,6 +198,7 @@ def verify_package(
             "errors": [f"malformed_package:{type(exc).__name__}:{exc}"],
             "recomputed_approved": False,
             "recomputed_reason": "malformed_package",
+            "recomputed_voided": [],
             "policy_pinned": policy is not None,
         }
 
@@ -248,6 +259,8 @@ def _verify(
         errors.append("denominator_mismatch")
     if recomputed["approvals"] != recorded.get("approvals"):
         errors.append("approvals_mismatch")
+    if recomputed["voided_voters"] != recorded.get("voided_voters"):
+        errors.append("voided_mismatch")
     effect = package.get("effect", {})
     if bool(effect.get("installed")) != bool(recorded["approved"]):
         errors.append("effect_verdict_mismatch")
@@ -264,6 +277,7 @@ def _verify(
         "errors": errors,
         "recomputed_approved": recomputed["approved"],
         "recomputed_reason": recomputed["reason"],
+        "recomputed_voided": recomputed["voided_voters"],
         "policy_pinned": policy is not None,
     }
 

@@ -61,7 +61,7 @@ cp src/mcx_experiment/scenarios/section-15.4.json my-deployment.json
 .venv/bin/mcx-scenario my-deployment.json
 ```
 
-No Python changes are needed. The runner rejects unknown keys and names the place in the file it could not use. It exits 1 if any `expect` in your file fails or any package does not verify, and 2 if the file is malformed. Other built-in scenarios: `ballot-attacks` (snapshot, amendment, replacement, abstention, and quorum cases) and `mcx2-vs-mcx3`. `mcx-scenario --list` lists them.
+No Python changes are needed. The runner rejects unknown keys and names the place in the file it could not use. It exits 1 if any `expect` in your file fails or any package does not verify, and 2 if the file is malformed. Other built-in scenarios: `ballot-attacks` (snapshot, amendment, replacement, equivocation, abstention, and quorum cases) and `mcx2-vs-mcx3`. `mcx-scenario --list` lists them.
 
 | Key | Meaning |
 | --- | --- |
@@ -71,7 +71,7 @@ No Python changes are needed. The runner rejects unknown keys and names the plac
 | `rules` | Named rules: `threshold` (`"2/3"`, `"0.75"`, or a JSON number, read exactly), `required_domains`, and `require_domain_assent`. |
 | `published_policy` | `{"electorate": ..., "rule": ...}`. Each package is also verified against it. Optional. |
 | `conditions[]` | `name`, `electorate`, `rule`, and ballots as `approve` and `reject` lists of voter ids, or a `ballots` list of `{"voter", "approve", "sequence", "domain", "cast_on"}`. A ballot from outside the electorate needs a `domain`. `amend` changes proposal fields after ballots marked `"cast_on": "original"` were cast. |
-| `conditions[].expect` | Any of `approved`, `reason`, `approvals`, `electorate_size`, `missing_domains`, `verified`, `matches_published_policy`. |
+| `conditions[].expect` | Any of `approved`, `reason`, `approvals`, `electorate_size`, `voided_voters`, `missing_domains`, `verified`, `matches_published_policy`. |
 | `enforcement` | `capabilities`, `request_defaults`, and `steps`. A step is `commit` (default), `check`, `attenuate`, `revoke`, or `advance_clock`; a commit can take `between_check_and_effect: {"revoke": id}` or `{"advance_clock": seconds}`. Optional `constraints`, `sanctions`, `schemas`, `audience`, and `now`. |
 
 More output:

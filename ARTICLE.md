@@ -12,7 +12,7 @@ The electorate is fixed before ballots are cast: one human, one infrastructure v
 
 The centralized baseline turns domain assent off and accepts one administrator. The flat baseline uses the shared electorate, an empty required-domain set, and a two-thirds threshold. The domain-assent condition requires human, infrastructure, and agent, each with at least one counted approval, and the same two-thirds bar. A fourth condition renames the required domains to `ops` and `custody`. A fifth is the positive control: one approval from each required domain.
 
-A ballot counts only if its hash matches the snapshot, the voter is in the snapshot, and the domain matches. Two disagreeing ballots at the same sequence void that voter. The threshold is compared as an exact fraction. Packages are signed per voter. A separate verifier recounts and does not call the implementation under test. A capability is minted only from a package that verifies and records an approval.
+A ballot counts only if its hash matches the snapshot, the voter is in the snapshot, and the domain matches. Two different ballots from one voter at the same sequence void that voter for the proposal, even if a later ballot follows. The threshold is compared as an exact fraction. Packages are signed per voter. A separate verifier recounts and does not call the implementation under test. A capability is minted only from a package that verifies and records an approval.
 
 ## Result
 

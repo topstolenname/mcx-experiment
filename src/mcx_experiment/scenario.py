@@ -421,6 +421,7 @@ def run_conditions(
                 "reason": verdict.reason,
                 "approvals": verdict.approvals,
                 "electorate_size": verdict.electorate_size,
+                "voided_voters": verdict.voided_voters,
                 "missing_domains": result.missing_domains,
                 "verified": verification["valid"],
                 "matches_published_policy": None if pinned is None else pinned["valid"],

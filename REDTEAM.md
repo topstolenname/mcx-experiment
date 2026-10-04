@@ -30,5 +30,6 @@ The second command exits non-zero if any catalogued attack is approved or commit
 | RT-16 | Parent revoked while an attenuated child commits | deny, `revoked_at_effect_time`, no ledger append |
 | RT-17 | Deny receipt edited to read allow | enforcer signature invalid |
 | RT-18 | Capability minted for another resource presented here | deny, `audience_mismatch` |
+| RT-19 | A voter's key signs approve and reject at one sequence, then approve at a higher sequence | voter voided for the proposal, still in the denominator; engine and verifier agree; deny |
 
 Not in the catalog, and not claimed: independent operators, a network boundary, or a label store outside the capability.

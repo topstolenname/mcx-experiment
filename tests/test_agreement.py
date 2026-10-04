@@ -60,7 +60,25 @@ def test_count_does_not_depend_on_ballot_order():
     snap = _snap()
     h = snap.proposal_hash
     ballots = [
-        Ballot("h1", "agent", True, h, 0),
+        Ballot("h1", "agent", True, h, 1),
+        Ballot("h1", "human", True, h, 0),
+        Ballot("i1", "infra", False, h, 1),
+        Ballot("i1", "infra", False, h, 1),
+        Ballot("i1", "infra", True, h, 2),
+        Ballot("a1", "agent", False, h, 0),
+        Ballot("a1", "agent", True, h, 1),
+    ]
+    outcomes = {
+        (r.approved, r.reason, r.approvals, tuple(r.voided_voters))
+        for r in (evaluate(snap, list(order)) for order in itertools.permutations(ballots))
+    }
+    assert outcomes == {(True, "approved", 3, ())}
+
+
+def test_equivocation_voids_the_voter_in_every_order():
+    snap = _snap()
+    h = snap.proposal_hash
+    ballots = [
         Ballot("h1", "human", True, h, 0),
         Ballot("i1", "infra", True, h, 1),
         Ballot("i1", "infra", False, h, 1),
@@ -69,10 +87,10 @@ def test_count_does_not_depend_on_ballot_order():
         Ballot("a1", "agent", True, h, 1),
     ]
     outcomes = {
-        (r.approved, r.reason, r.approvals)
+        (r.approved, r.reason, r.approvals, r.electorate_size, tuple(r.voided_voters))
         for r in (evaluate(snap, list(order)) for order in itertools.permutations(ballots))
     }
-    assert outcomes == {(True, "approved", 3)}
+    assert outcomes == {(False, "domain_assent_failed", 2, 3, ("i1",))}
 
 
 def test_snapshot_rejects_a_voter_listed_twice():

@@ -84,7 +84,33 @@
         {"voter": "human-1", "approve": true, "sequence": 1},
         {"voter": "human-1", "approve": false, "sequence": 1}
       ],
-      "expect": {"approved": false, "missing_domains": ["human"]}
+      "expect": {"approved": false, "missing_domains": ["human"], "voided_voters": ["human-1"]}
+    },
+    {
+      "name": "equivocation_then_higher_sequence",
+      "label": "The human signs approve and reject at one sequence, then approves at a higher one",
+      "electorate": "shared",
+      "rule": "mcx",
+      "approve": ["infra-1", "agent-1", "agent-2", "agent-3"],
+      "ballots": [
+        {"voter": "human-1", "approve": true, "sequence": 1},
+        {"voter": "human-1", "approve": false, "sequence": 1},
+        {"voter": "human-1", "approve": true, "sequence": 2}
+      ],
+      "expect": {"approved": false, "reason": "domain_assent_failed", "missing_domains": ["human"],
+                 "voided_voters": ["human-1"], "approvals": 4, "electorate_size": 6}
+    },
+    {
+      "name": "identical_resubmission",
+      "label": "The human submits the same approving ballot twice at one sequence",
+      "electorate": "shared",
+      "rule": "mcx",
+      "approve": ["infra-1", "agent-1", "agent-2"],
+      "ballots": [
+        {"voter": "human-1", "approve": true, "sequence": 1},
+        {"voter": "human-1", "approve": true, "sequence": 1}
+      ],
+      "expect": {"approved": true, "approvals": 4, "voided_voters": []}
     },
     {
       "name": "replacement_by_higher_sequence",
