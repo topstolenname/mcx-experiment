@@ -2,6 +2,7 @@
 
 Denominator is the frozen electorate. Abstentions do not lower the bar.
 A single authorization domain cannot approve a D1-D4 decision.
+Domain assent can be turned off so a flat threshold is a real baseline.
 """
 
 from __future__ import annotations
@@ -61,6 +62,7 @@ class Snapshot:
     electorate: tuple[Voter, ...]
     required_domains: tuple[str, ...]
     threshold: float
+    require_domain_assent: bool = True
 
     @property
     def proposal_hash(self) -> str:
@@ -75,6 +77,7 @@ class Snapshot:
                 ],
                 "required_domains": list(self.required_domains),
                 "threshold": self.threshold,
+                "require_domain_assent": self.require_domain_assent,
             }
         )
 
@@ -119,7 +122,6 @@ class Approval:
 
 
 def last_ballots(ballots: Iterable[Ballot], proposal_hash: str) -> dict[str, Ballot]:
-    """Last valid ballot per voter for the active proposal hash."""
     chosen: dict[str, Ballot] = {}
     for ballot in ballots:
         if ballot.proposal_hash != proposal_hash:
@@ -150,13 +152,13 @@ def evaluate(snapshot: Snapshot, ballots: Iterable[Ballot]) -> Approval:
         for domain in snapshot.required_domains
     }
     threshold_met = ratio >= snapshot.threshold
-    all_assent = all(assent.values()) if snapshot.required_domains else False
-    approved = quorum and threshold_met and all_assent and electorate_size > 0
+    domain_ok = all(assent.values()) if snapshot.require_domain_assent else True
+    approved = quorum and threshold_met and domain_ok and electorate_size > 0
     if approved:
         reason = "approved"
     elif not quorum:
         reason = "quorum_failed"
-    elif not all_assent:
+    elif snapshot.require_domain_assent and not all(assent.values()):
         reason = "domain_assent_failed"
     elif not threshold_met:
         reason = "threshold_failed"
@@ -176,6 +178,5 @@ def evaluate(snapshot: Snapshot, ballots: Iterable[Ballot]) -> Approval:
 
 
 def single_domain_cannot_approve(result: Approval) -> bool:
-    """Section 7.2 observation: one domain's approvals are not sufficient."""
     approving = [d for d, ok in result.domain_assent.items() if ok]
     return not result.approved and len(approving) <= 1
