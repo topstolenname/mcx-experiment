@@ -106,3 +106,44 @@ def test_an_unsigned_conflicting_ballot_cannot_void_an_honest_voter_in_the_verif
     assert report["recomputed_voided"] == []
     assert report["recomputed_approved"] is True
     assert not report["valid"] and "bad_signature:human-1" in report["errors"]
+
+
+def test_amendment_clears_equivocation_and_the_voter_can_cast_a_fresh_ballot():
+    # h1: human-1 signs approve and reject at sequence 1, then approve at 2.
+    h1_ballots = OTHERS + [
+        Ballot("human-1", "human", True, H, 1),
+        Ballot("human-1", "human", False, H, 1),
+        Ballot("human-1", "human", True, H, 2),
+    ]
+    on_h1, _, h1_report = _both(h1_ballots)
+    assert on_h1.voided_voters == ["human-1"]
+    assert "human-1" not in {b.voter_id for b in on_h1.counted_ballots}
+    assert on_h1.electorate_size == 4 and not on_h1.approved
+    assert h1_report["valid"] and h1_report["recomputed_voided"] == ["human-1"]
+
+    # A substantive amendment: same decision id, new proposal hash h2.
+    amended = Snapshot(SNAP.decision_id, SNAP.decision_type, {**SNAP.proposal, "action": "grant-narrower"},
+                       SNAP.electorate, SNAP.required_domains, SNAP.threshold, SNAP.require_domain_assent)
+    h2 = amended.proposal_hash
+    assert h2 != H
+
+    # V for h2 starts empty: no h1 ballot counts and no voiding carries over.
+    carried = evaluate(amended, h1_ballots)
+    assert carried.counted_ballots == [] and carried.voided_voters == []
+    assert carried.approvals == 0 and carried.electorate_size == 4 and not carried.approved
+
+    # A fresh ballot from human-1 on h2, at the sequence it equivocated at on h1, counts.
+    alone = evaluate(amended, h1_ballots + [Ballot("human-1", "human", True, h2, 1)])
+    assert alone.voided_voters == []
+    assert [(b.voter_id, b.proposal_hash) for b in alone.counted_ballots] == [("human-1", h2)]
+    assert alone.approvals == 1
+
+    fresh = [Ballot(b.voter_id, b.domain, b.approve, h2, b.sequence) for b in OTHERS]
+    ballots = h1_ballots + fresh + [Ballot("human-1", "human", True, h2, 1)]
+    verdict = evaluate(amended, ballots)
+    assert verdict.voided_voters == [] and verdict.approved and verdict.approvals == 4
+    assert {b.proposal_hash for b in verdict.counted_ballots} == {h2}
+    package = build_package(amended, ballots, KEYS, {"installed": True}, RECORDER)
+    report = verify_package(package, PUBLICS, RECORDER.public_key())
+    assert report["valid"], report
+    assert report["recomputed_voided"] == [] and report["recomputed_approved"] is True
