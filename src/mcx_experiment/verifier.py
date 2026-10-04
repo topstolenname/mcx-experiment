@@ -1,21 +1,23 @@
-"""Independent recomputation of the approval predicate.
-
-This module does not import evaluate(). A disagreement with the protocol
-module is a finding, not something this verifier papers over. Ballot tags
-are Ed25519 signatures over the canonical ballot payload. Ballots whose
-signature fails are excluded from the recount.
-"""
+"""Independent recomputation. Does not import evaluate(), canonical(), or content_hash()."""
 
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
 from fractions import Fraction
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from mcx_experiment.protocol import canonical, content_hash
-
 MIN_REQUIRED_DOMAINS = 2
+
+
+def canonical(payload: dict) -> bytes:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+
+
+def content_hash(payload: dict) -> str:
+    return hashlib.sha256(canonical(payload)).hexdigest()
 
 
 def _recount(package: dict) -> dict:
@@ -42,9 +44,7 @@ def _recount(package: dict) -> dict:
         latest.pop(voter_id, None)
     approvals = [b for b in latest.values() if b["approve"]]
     ratio = (len(approvals) / electorate_size) if electorate_size else 0.0
-    assent = {
-        domain: any(b["domain"] == domain for b in approvals) for domain in required
-    }
+    assent = {domain: any(b["domain"] == domain for b in approvals) for domain in required}
     need_domains = package.get("require_domain_assent", True)
     threshold_met = electorate_size > 0 and (
         Fraction(len(approvals), electorate_size)
@@ -52,9 +52,7 @@ def _recount(package: dict) -> dict:
     )
     domains_configured = (not need_domains) or len(set(required)) >= MIN_REQUIRED_DOMAINS
     domain_ok = all(assent.values()) if need_domains else True
-    approved = (
-        domains_configured and quorum and threshold_met and domain_ok and electorate_size > 0
-    )
+    approved = domains_configured and quorum and threshold_met and domain_ok and electorate_size > 0
     if approved:
         reason = "approved"
     elif not domains_configured:
@@ -85,9 +83,9 @@ def _signature_ok(ballot: dict, public_keys: dict[str, Ed25519PublicKey]) -> tup
             "sequence": ballot["sequence"],
         }
     )
-    key = public_keys.get(ballot["domain"])
+    key = public_keys.get(ballot["voter_id"])
     if key is None:
-        return False, f"unknown_domain:{ballot['voter_id']}"
+        return False, f"unknown_voter:{ballot['voter_id']}"
     try:
         key.verify(base64.b64decode(ballot.get("signature", "")), payload)
     except Exception:
@@ -95,7 +93,11 @@ def _signature_ok(ballot: dict, public_keys: dict[str, Ed25519PublicKey]) -> tup
     return True, ""
 
 
-def verify_package(package: dict, public_keys: dict[str, Ed25519PublicKey]) -> dict:
+def verify_package(
+    package: dict,
+    public_keys: dict[str, Ed25519PublicKey],
+    recorder_key: Ed25519PublicKey,
+) -> dict:
     errors = []
     expected_hash = content_hash(
         {
@@ -123,9 +125,17 @@ def verify_package(package: dict, public_keys: dict[str, Ed25519PublicKey]) -> d
         errors.append("verdict_mismatch")
     if recomputed["electorate_size"] != recorded["electorate_size"]:
         errors.append("denominator_mismatch")
-    body = {k: v for k, v in package.items() if k != "package_hash"}
-    if content_hash(body) != package.get("package_hash"):
+    effect = package.get("effect", {})
+    if bool(effect.get("installed")) != bool(recorded["approved"]):
+        errors.append("effect_verdict_mismatch")
+    body = {k: v for k, v in package.items() if k not in ("package_hash", "recorder_signature")}
+    digest = content_hash(body)
+    if digest != package.get("package_hash"):
         errors.append("package_hash_mismatch")
+    try:
+        recorder_key.verify(base64.b64decode(package.get("recorder_signature", "")), digest.encode())
+    except Exception:
+        errors.append("recorder_signature_invalid")
     return {
         "valid": not errors,
         "errors": errors,
