@@ -1,11 +1,15 @@
-"""Fail-closed resource-side checks for the three D0 traces.
+"""Fail-closed checks and a commit boundary.
 
-This is an in-process reference, not a network broker. Missing policy denies.
+Authorization is rechecked immediately before a ledger append. A callback
+between the two checks is the interleaving point for the revocation trace.
+Missing policy denies. Payload rules are field, classification, and recipient
+constraints, not a keyword filter.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 
 @dataclass
@@ -16,6 +20,8 @@ class Capability:
     tool: str
     destinations: tuple[str, ...]
     allowed_recipients: tuple[str, ...]
+    allowed_classifications: tuple[str, ...] = ("public",)
+    allowed_fields: tuple[str, ...] = ("title", "body", "recipient", "classification")
     transferable: bool = False
     revoked: bool = False
 
@@ -27,6 +33,7 @@ class Receipt:
     tool: str
     resource: str
     capability_id: str
+    committed: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -35,12 +42,14 @@ class Receipt:
             "tool": self.tool,
             "resource": self.resource,
             "capability_id": self.capability_id,
+            "committed": self.committed,
         }
 
 
 @dataclass
 class Enforcer:
     capabilities: dict[str, Capability] = field(default_factory=dict)
+    ledger: list[dict] = field(default_factory=list)
 
     def check(
         self,
@@ -50,7 +59,7 @@ class Enforcer:
         tool: str,
         destination: str,
         recipient: str,
-        body: str,
+        fields: dict,
     ) -> Receipt:
         cap = self.capabilities.get(capability_id)
         if cap is None:
@@ -67,6 +76,56 @@ class Enforcer:
             return Receipt("deny", "destination_not_allowlisted", tool, destination, capability_id)
         if recipient not in cap.allowed_recipients:
             return Receipt("deny", "param_recipient_not_in_scope", tool, destination, capability_id)
-        if "exfiltrate" in body.lower():
-            return Receipt("deny", "param_body_forbidden", tool, destination, capability_id)
+        extra = set(fields) - set(cap.allowed_fields)
+        if extra:
+            return Receipt("deny", "param_field_not_allowed", tool, destination, capability_id)
+        classification = fields.get("classification", "")
+        if classification not in cap.allowed_classifications:
+            return Receipt("deny", "param_classification_not_allowed", tool, destination, capability_id)
         return Receipt("allow", "allowed", tool, destination, capability_id)
+
+    def commit(
+        self,
+        *,
+        presenter: str,
+        capability_id: str,
+        tool: str,
+        destination: str,
+        recipient: str,
+        fields: dict,
+        before_commit: Optional[Callable[[], None]] = None,
+    ) -> Receipt:
+        """Recheck at the ledger append. before_commit runs after the first check."""
+        first = self.check(
+            presenter=presenter,
+            capability_id=capability_id,
+            tool=tool,
+            destination=destination,
+            recipient=recipient,
+            fields=fields,
+        )
+        if first.decision != "allow":
+            return first
+        if before_commit is not None:
+            before_commit()
+        second = self.check(
+            presenter=presenter,
+            capability_id=capability_id,
+            tool=tool,
+            destination=destination,
+            recipient=recipient,
+            fields=fields,
+        )
+        if second.decision != "allow":
+            return second
+        self.ledger.append(
+            {
+                "capability_id": capability_id,
+                "tool": tool,
+                "destination": destination,
+                "recipient": recipient,
+                "fields": fields,
+            }
+        )
+        second.committed = True
+        return second
