@@ -1,12 +1,8 @@
 """Fail-closed checks and a commit boundary.
 
-Authorization is rechecked immediately before a ledger append. A callback
-between the two checks is the interleaving point for the revocation trace.
-The second check and the append run under a lock, and revoke() takes the
-same lock, so a revocation is either fully before or fully after a commit.
-Missing policy denies. Payload rules are field, classification, and recipient
-constraints, not a keyword filter. The recipient argument must equal the
-recipient inside the payload.
+The second check and the ledger append share a lock with revoke().
+Payload rules bind recipient, bound classification, and constrained text.
+Missing policy denies.
 """
 
 from __future__ import annotations
@@ -14,6 +10,13 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from typing import Callable, Optional
+
+MAX_TITLE = 200
+MAX_BODY = 2000
+
+
+def _text_ok(value: object, limit: int) -> bool:
+    return isinstance(value, str) and 0 < len(value) <= limit and value.isprintable()
 
 
 @dataclass
@@ -89,7 +92,7 @@ class Enforcer:
             return Receipt("deny", "destination_not_allowlisted", tool, destination, capability_id)
         if recipient not in cap.allowed_recipients:
             return Receipt("deny", "param_recipient_not_in_scope", tool, destination, capability_id)
-        if "recipient" in fields and fields["recipient"] != recipient:
+        if fields.get("recipient") != recipient:
             return Receipt("deny", "param_recipient_mismatch", tool, destination, capability_id)
         extra = set(fields) - set(cap.allowed_fields)
         if extra:
@@ -97,6 +100,10 @@ class Enforcer:
         classification = fields.get("classification", "")
         if classification not in cap.allowed_classifications:
             return Receipt("deny", "param_classification_not_allowed", tool, destination, capability_id)
+        if not _text_ok(fields.get("title", ""), MAX_TITLE):
+            return Receipt("deny", "param_title_rejected", tool, destination, capability_id)
+        if not _text_ok(fields.get("body", ""), MAX_BODY):
+            return Receipt("deny", "param_body_rejected", tool, destination, capability_id)
         return Receipt("allow", "allowed", tool, destination, capability_id)
 
     def commit(
@@ -110,7 +117,6 @@ class Enforcer:
         fields: dict,
         before_commit: Optional[Callable[[], None]] = None,
     ) -> Receipt:
-        """Recheck at the ledger append. before_commit runs after the first check."""
         args = dict(
             presenter=presenter,
             capability_id=capability_id,
