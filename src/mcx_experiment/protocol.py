@@ -74,6 +74,15 @@ class Snapshot:
     threshold: float
     require_domain_assent: bool = True
 
+    def __post_init__(self) -> None:
+        self.electorate = tuple(self.electorate)
+        self.required_domains = tuple(self.required_domains)
+        seen: set[str] = set()
+        for voter in self.electorate:
+            if voter.voter_id in seen:
+                raise ValueError(f"voter {voter.voter_id!r} appears twice in the electorate")
+            seen.add(voter.voter_id)
+
     @property
     def proposal_hash(self) -> str:
         return content_hash(
@@ -131,8 +140,29 @@ class Approval:
         }
 
 
+def valid_ballots(snapshot: Snapshot, ballots: Iterable[Ballot]) -> list[Ballot]:
+    """Ballots on the active hash from an eligible snapshot member in that member's domain.
+
+    Validity is decided before replacement, so an invalid ballot at a higher
+    sequence cannot mask, or be masked by, a valid one. This matches the
+    verifier and the paper's "last valid signed ballot" rule.
+    """
+    eligible = {v.voter_id: v.domain for v in snapshot.eligible}
+    proposal_hash = snapshot.proposal_hash
+    return [
+        b
+        for b in ballots
+        if b.proposal_hash == proposal_hash and eligible.get(b.voter_id) == b.domain
+    ]
+
+
 def last_ballots(ballots: Iterable[Ballot], proposal_hash: str) -> dict[str, Ballot]:
-    """Latest ballot per voter. Conflicting ballots at the same sequence void the voter."""
+    """Latest ballot per voter. Conflicting ballots at the same sequence void the voter.
+
+    The result does not depend on list order: a strictly higher sequence
+    replaces, an identical resubmission is a no-op, and a disagreement at the
+    highest sequence voids that voter.
+    """
     chosen: dict[str, Ballot] = {}
     conflicted: set[str] = set()
     for ballot in ballots:
@@ -156,12 +186,7 @@ def evaluate(snapshot: Snapshot, ballots: Iterable[Ballot]) -> Approval:
         any(v.domain == domain for v in eligible.values())
         for domain in snapshot.required_domains
     )
-    counted = []
-    for ballot in last_ballots(ballots, snapshot.proposal_hash).values():
-        voter = eligible.get(ballot.voter_id)
-        if voter is None or voter.domain != ballot.domain:
-            continue
-        counted.append(ballot)
+    counted = list(last_ballots(valid_ballots(snapshot, ballots), snapshot.proposal_hash).values())
     approvals = [b for b in counted if b.approve]
     ratio = (len(approvals) / electorate_size) if electorate_size else 0.0
     assent = {

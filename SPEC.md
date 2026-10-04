@@ -10,7 +10,9 @@ On a frozen electorate, four approving ballots from one domain clear a two-third
 
 Inputs are a snapshot and a list of ballots. The snapshot hash covers the decision id, decision type, proposal, electorate, required domains, threshold, and whether domain assent is required.
 
-A ballot counts only if its proposal hash equals the snapshot hash, its voter is eligible, and its domain equals that voter's domain. The latest sequence wins. Two ballots from the same voter at the same sequence that disagree void that voter.
+A ballot is valid only if its proposal hash equals the snapshot hash, its voter is eligible, and its domain equals that voter's domain. Validity is decided first. Among a voter's valid ballots, the highest sequence wins, so an invalid ballot at a higher sequence neither masks nor replaces a valid one. Two valid ballots from the same voter at that highest sequence that disagree void that voter. An identical resubmission is not a disagreement. The counted set does not depend on the order of the ballot list.
+
+A snapshot that lists the same voter id twice is malformed and is rejected.
 
 The denominator is the number of eligible voters in the snapshot. The threshold comparison is the exact fraction `approvals / electorate >= threshold`.
 

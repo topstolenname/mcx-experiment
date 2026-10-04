@@ -21,11 +21,13 @@ def content_hash(payload: dict) -> str:
 
 
 def _recount(package: dict) -> dict:
-    eligible = [v for v in package["electorate"] if v["eligible"]]
-    electorate_size = len(eligible)
-    eligible_ids = {v["voter_id"]: v["domain"] for v in eligible}
+    eligible_ids: dict[str, str] = {}
+    for v in package["electorate"]:
+        if v["eligible"] and v["voter_id"] not in eligible_ids:
+            eligible_ids[v["voter_id"]] = v["domain"]
+    electorate_size = len(eligible_ids)
     required = package["required_domains"]
-    quorum = all(any(v["domain"] == domain for v in eligible) for domain in required)
+    quorum = all(any(d == domain for d in eligible_ids.values()) for domain in required)
     latest: dict[str, dict] = {}
     conflicted: set[str] = set()
     for ballot in package["ballots"]:
@@ -112,6 +114,11 @@ def verify_package(
     )
     if expected_hash != package["proposal_hash"]:
         errors.append("proposal_hash_mismatch")
+    seen: set[str] = set()
+    for voter in package["electorate"]:
+        if voter["voter_id"] in seen:
+            errors.append(f"duplicate_voter:{voter['voter_id']}")
+        seen.add(voter["voter_id"])
     valid_ballots = []
     for ballot in package["ballots"]:
         ok, error = _signature_ok(ballot, public_keys)
