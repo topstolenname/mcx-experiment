@@ -2,7 +2,7 @@
 
 This repository is the Section 15.4 artifact for the white paper. It is not a second paper.
 
-The paper's minimum experiment asks for a reference engine for Section 7, an independent verifier, a D2 comparison against a centralized grant, and the three D0 traces in Section 10.5. This tree is that prototype. The enforcer is in-process. The paper's requirement that it sit outside the agent is not met.
+The paper's minimum experiment asks for a reference engine for Section 7, a separate verifier, a D2 comparison against a centralized grant, and the three D0 traces in Section 10.5. This tree is that prototype. The enforcer is in-process. The paper's requirement that it sit outside the agent is not met.
 
 ## Result the paper allows
 
