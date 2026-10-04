@@ -46,7 +46,7 @@ References: `tests/<file>.py::<test>`, `RT-<n>` (see `REDTEAM.md`), and `scenari
 | 1. Does the predicate reject single-domain ballots under snapshot, abstention, amendment, and replacement cases? | Shown (reference) | The Section 7 rows above, and `scenario:ballot-attacks` |
 | 2. Does MCX-3 add objection or detection value over MCX-2, or only a capturable vote? | Partly shown: the veto, its liveness cost, and that a captured representative adds nothing. Detection value Not shown | `tests/test_profiles.py::test_requiring_the_agent_domain_never_raises_liveness_on_the_same_electorate`, `scenario:mcx2-vs-mcx3/agent_rep_objects/MCX-3`, `scenario:mcx2-vs-mcx3/agent_rep_captured/MCX-3` |
 | 3. Does resource-side enforcement deny the three D0 traces? | Partly shown: an in-process enforcer denies them. Resource-side placement Not shown | `scenario:section-15.4`, `tests/test_artifact.py::test_live_run_matches_section_15_4_summary` |
-| 4. Can an independent verifier reconstruct authorization and detect tampering, omission, and bundle mismatch? | Partly shown: recount, tampering, ballot omission, receipt bundle-hash pinning, and package bundle-hash binding and pinning. Log inclusion Not shown. The verifier is separate code by the same author in the same repository | `tests/test_properties.py::test_tampering_is_caught`, `tests/test_enforcer_policy.py::test_tampered_or_mispinned_receipt_is_caught`, `tests/test_bundle.py::test_verifier_pinned_to_another_bundle_reports_the_mismatch`, `RT-21` |
+| 4. Can a separate verifier reconstruct authorization and detect tampering, omission, and bundle mismatch? | Partly shown: recount, tampering, ballot omission, receipt bundle-hash pinning, and package bundle-hash binding and pinning. Log inclusion Not shown. The verifier is separate code by the same author in the same repository | `tests/test_properties.py::test_tampering_is_caught`, `tests/test_enforcer_policy.py::test_tampered_or_mispinned_receipt_is_caught`, `tests/test_bundle.py::test_verifier_pinned_to_another_bundle_reports_the_mismatch`, `RT-21` |
 | 5. How do emergency expiry and the safe-state profile trade containment latency against abuse? | Not shown | D3 and the safe state are not implemented |
 
 ## Section 15.4 minimum experiment
@@ -72,3 +72,11 @@ References: `tests/<file>.py::<test>`, `RT-<n>` (see `REDTEAM.md`), and `scenari
 | Sanctions applied (10.6) | Not shown | Levels are recorded in receipts and never applied |
 | Enforcement-bundle changes pass a D1 or D4 decision (11) | Not shown | The bundle is hashed, not governed. An in-place bundle change does deny capabilities bound to the old bundle (`RT-22`), but nothing here routes the change itself through a decision |
 | Fail closed when trusted time is unavailable (10.3, 13.4) | Shown (reference) | `tests/test_enforcer_policy.py::test_missing_trusted_time_fails_closed` |
+
+## Section 13 and 14 requirements
+
+| Paper requirement | Status here | Evidence |
+|---|---|---|
+| Cross-domain hash attestation before a human signs (13.5) | Not shown | Not implemented |
+| Bounded, typed D1–D4 diffs (13.5) | Not shown | Not implemented |
+| Cumulative quotas and effect classification against compositional D0 effects (14) | Not shown | Not implemented. Out-of-band monitoring is not implemented either, and sanctions are recorded but never applied (row "Sanctions applied (10.6)") |
