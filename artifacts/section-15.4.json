@@ -1,0 +1,18 @@
+{
+  "paper": "Meta-Concord draft 0.4",
+  "section": "15.4",
+  "independence_claimed": false,
+  "enforcer_placement": "in-process reference, not a resource broker",
+  "split": {
+    "single_administrator": true,
+    "flat_threshold_same_electorate": true,
+    "mcx_domain_assent": false
+  },
+  "domain_assent_reason": "domain_assent_failed",
+  "d0": {
+    "unauthorized_recipient": "param_recipient_not_in_scope",
+    "delegation": "delegation_not_attenuated",
+    "revocation_before_commit": "revoked_at_effect_time"
+  },
+  "note": "Full packages are produced by python -m mcx_experiment.publish. Keys are generated in process, so byte equality is not required."
+}

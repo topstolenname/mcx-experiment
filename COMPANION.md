@@ -2,7 +2,7 @@
 
 This repository is the Section 15.4 artifact for the white paper. It is not a second paper.
 
-The paper’s minimum experiment asks for a reference engine for Section 7, an independent verifier, a D2 comparison against a centralized grant, and the three D0 traces in Section 10.5. This tree is that prototype. The enforcer is in-process. The paper’s requirement that it sit outside the agent is not met.
+The paper's minimum experiment asks for a reference engine for Section 7, an independent verifier, a D2 comparison against a centralized grant, and the three D0 traces in Section 10.5. This tree is that prototype. The enforcer is in-process. The paper's requirement that it sit outside the agent is not met.
 
 ## Result the paper allows
 
@@ -27,4 +27,4 @@ pytest -q
 python -m mcx_experiment.redteam
 ```
 
-`artifacts/section-15.4.json` is one recorded run: snapshot, ballots, package, verifier output, and receipts. A later run will not byte-match it, because the keys are generated in process. The counting result should match.
+`artifacts/section-15.4.json` records the split the paper is allowed to cite. `python -m mcx_experiment.publish` writes the packages, ballots, and receipts for a given run. Keys are generated in process, so a later file will not byte-match an earlier one. The counting result should.
