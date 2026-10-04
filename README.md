@@ -1,17 +1,25 @@
 # MCX experiment
 
-Reference run for the minimum comparison in Meta-Concord draft 0.4.
+Reference comparison for Meta-Concord draft 0.4. This is an in-process harness. It is not evidence of production mediation or of independent operators.
 
-This is not the `agisa_sac` governance simulation. That code divides by ballots cast and fails open when no manifest is loaded. This repo freezes the electorate, denies on missing policy, and writes a verifier result.
+## What a passing run separates
 
-## What a passing run shows
+The same egress proposal and the same four agent approvals are evaluated under four rules:
 
-- A single-administrator baseline authorizes a D2 egress grant.
-- An agent-domain coalition proposing the same grant does not. Three approving agent ballots against a six-member electorate fail domain assent. Abstentions stay in the denominator.
-- An independent verifier recomputes the verdict and rejects a mismatched package hash.
-- Three D0 checks deny: an allowlisted tool with an out-of-scope recipient, a child presenting a parent capability, and a capability revoked before effect.
+- A single administrator approves.
+- A flat two-thirds threshold on the shared electorate also approves, because four of six ballots clear the numeric bar.
+- Domain assent on that same electorate does not. The other domains abstain, and abstention stays in the denominator.
+- The same denial happens if the required domains are named `ops` and `custody` rather than human, agent, and infrastructure.
 
-It does not show domain independence, production signatures, or mediation outside this process. Signer tags are HMAC keys fixed in the harness.
+A fifth case is the positive control: human, agent, and infrastructure assent, the grant installs. Snapshot checks show a voter added after the snapshot is ignored, and an amended proposal does not reuse old ballots.
+
+D0 checks use recipient, field, and classification constraints. A valid ticket commits to the ledger. An unauthorized recipient and a restricted classification do not. Revocation between the first check and the ledger append does not commit.
+
+Signatures are Ed25519. The verifier recounts the predicate itself and does not call the protocol evaluator.
+
+## What this does not show
+
+It does not show that the domains are independently operated. It does not show admission-flood resistance beyond the frozen snapshot. It does not broker a network call.
 
 ## Run
 
@@ -20,12 +28,3 @@ python -m pip install -e ".[dev]"
 pytest -q
 python -m mcx_experiment.run
 ```
-
-`artifacts/run/report.json` is the published package for that invocation.
-
-## Layout
-
-- `src/mcx_experiment/protocol.py` — Section 7 predicate
-- `src/mcx_experiment/evidence.py` — package and verifier
-- `src/mcx_experiment/enforcer.py` — fail-closed D0 checks
-- `src/mcx_experiment/run.py` — the two conditions and three traces

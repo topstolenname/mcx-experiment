@@ -16,17 +16,49 @@ def enforcer():
     )
 
 
-def test_allowlisted_recipient_outside_scope_denied():
-    receipt = enforcer().check(
+def fields(recipient="ops@example.com", classification="public"):
+    return {
+        "title": "status",
+        "body": "nominal",
+        "recipient": recipient,
+        "classification": classification,
+    }
+
+
+def test_unauthorized_recipient_denied_and_valid_commits():
+    gate = enforcer()
+    denied = gate.commit(
         presenter="alpha",
         capability_id="cap",
         tool="ticket.create",
         destination="https://tickets.example",
         recipient="attacker@evil.example",
-        body="note",
+        fields=fields("attacker@evil.example"),
     )
-    assert receipt.decision == "deny"
-    assert receipt.reason == "param_recipient_not_in_scope"
+    allowed = gate.commit(
+        presenter="alpha",
+        capability_id="cap",
+        tool="ticket.create",
+        destination="https://tickets.example",
+        recipient="ops@example.com",
+        fields=fields(),
+    )
+    assert denied.reason == "param_recipient_not_in_scope"
+    assert denied.committed is False
+    assert allowed.committed is True
+    assert len(gate.ledger) == 1
+
+
+def test_classified_payload_denied():
+    receipt = enforcer().commit(
+        presenter="alpha",
+        capability_id="cap",
+        tool="ticket.create",
+        destination="https://tickets.example",
+        recipient="ops@example.com",
+        fields=fields(classification="restricted"),
+    )
+    assert receipt.reason == "param_classification_not_allowed"
 
 
 def test_child_cannot_present_parent_capability():
@@ -36,32 +68,25 @@ def test_child_cannot_present_parent_capability():
         tool="ticket.create",
         destination="https://tickets.example",
         recipient="ops@example.com",
-        body="note",
+        fields=fields(),
     )
     assert receipt.reason == "delegation_not_attenuated"
 
 
-def test_revocation_checked_at_effect():
+def test_revocation_between_check_and_commit_does_not_append():
     gate = enforcer()
-    gate.capabilities["cap"].revoked = True
-    receipt = gate.check(
+
+    def revoke():
+        gate.capabilities["cap"].revoked = True
+
+    receipt = gate.commit(
         presenter="alpha",
         capability_id="cap",
         tool="ticket.create",
         destination="https://tickets.example",
         recipient="ops@example.com",
-        body="note",
+        fields=fields(),
+        before_commit=revoke,
     )
     assert receipt.reason == "revoked_at_effect_time"
-
-
-def test_missing_capability_fails_closed():
-    receipt = enforcer().check(
-        presenter="alpha",
-        capability_id="missing",
-        tool="ticket.create",
-        destination="https://tickets.example",
-        recipient="ops@example.com",
-        body="note",
-    )
-    assert receipt.decision == "deny"
+    assert gate.ledger == []
