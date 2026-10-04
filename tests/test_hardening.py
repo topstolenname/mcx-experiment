@@ -2,20 +2,11 @@
 
 from __future__ import annotations
 
-import base64
-
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from mcx_experiment.enforcer import Capability, Enforcer
 from mcx_experiment.evidence import build_package, sign_ballot
-from mcx_experiment.protocol import (
-    Ballot,
-    DecisionType,
-    Snapshot,
-    Voter,
-    evaluate,
-    meets_threshold,
-)
+from mcx_experiment.protocol import Ballot, DecisionType, Snapshot, Voter, evaluate, meets_threshold
 from mcx_experiment.verifier import verify_package
 
 DOMAINS = ("human", "agent", "infra")
@@ -72,35 +63,43 @@ def test_equal_sequence_conflict_voids_voter():
 
 def _signed_package(forge_infra=False):
     snap = _snapshot()
-    keys = {d: Ed25519PrivateKey.generate() for d in DOMAINS}
+    keys = {f"{d[0]}{i}": Ed25519PrivateKey.generate() for d in DOMAINS for i in (1, 2)}
+    recorder = Ed25519PrivateKey.generate()
     ballots = [
         _ballot(snap, "h1", "human"),
         _ballot(snap, "h2", "human"),
         _ballot(snap, "a1", "agent"),
         _ballot(snap, "i1", "infra"),
     ]
-    package = build_package(snap, ballots, keys, {"installed": True})
-    publics = {d: k.public_key() for d, k in keys.items()}
+    package = build_package(snap, ballots, keys, {"installed": True}, recorder)
+    publics = {voter_id: key.public_key() for voter_id, key in keys.items()}
     if forge_infra:
-        for b in package["ballots"]:
-            if b["voter_id"] == "i1":
-                b["signature"] = sign_ballot(keys["agent"], ballots[3])
-    return package, publics
+        for ballot in package["ballots"]:
+            if ballot["voter_id"] == "i1":
+                ballot["signature"] = sign_ballot(keys["a1"], ballots[3])
+    return package, publics, recorder.public_key()
 
 
 def test_honest_package_verifies():
-    package, publics = _signed_package()
-    report = verify_package(package, publics)
+    package, publics, recorder = _signed_package()
+    report = verify_package(package, publics, recorder)
     assert report["valid"], report
     assert report["recomputed_approved"]
 
 
 def test_forged_ballot_is_excluded_from_recount():
-    package, publics = _signed_package(forge_infra=True)
-    report = verify_package(package, publics)
+    package, publics, recorder = _signed_package(forge_infra=True)
+    report = verify_package(package, publics, recorder)
     assert not report["valid"]
     assert not report["recomputed_approved"]
-    assert any(e.startswith("bad_signature") for e in report["errors"])
+    assert any(error.startswith("bad_signature") for error in report["errors"])
+
+
+def test_effect_must_match_verdict():
+    package, publics, recorder = _signed_package()
+    package["effect"] = {"installed": False}
+    report = verify_package(package, publics, recorder)
+    assert "effect_verdict_mismatch" in report["errors"] or "package_hash_mismatch" in report["errors"]
 
 
 def _enforcer():
@@ -122,7 +121,12 @@ def _args(recipient="ok@example.com", payload_recipient="ok@example.com"):
         tool="ticket",
         destination="tickets.example",
         recipient=recipient,
-        fields={"title": "t", "recipient": payload_recipient, "classification": "public"},
+        fields={
+            "title": "t",
+            "body": "note",
+            "recipient": payload_recipient,
+            "classification": "public",
+        },
     )
 
 
@@ -130,6 +134,13 @@ def test_recipient_argument_must_match_payload():
     receipt = _enforcer().check(**_args(payload_recipient="evil@example.com"))
     assert receipt.decision == "deny"
     assert receipt.reason == "param_recipient_mismatch"
+
+
+def test_oversized_body_denied():
+    args = _args()
+    args["fields"]["body"] = "x" * 2001
+    receipt = _enforcer().check(**args)
+    assert receipt.reason == "param_body_rejected"
 
 
 def test_valid_request_commits():
