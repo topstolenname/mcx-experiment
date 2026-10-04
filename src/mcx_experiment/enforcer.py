@@ -1,0 +1,72 @@
+"""Fail-closed resource-side checks for the three D0 traces.
+
+This is an in-process reference, not a network broker. Missing policy denies.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class Capability:
+    capability_id: str
+    scope: str
+    audience: str
+    tool: str
+    destinations: tuple[str, ...]
+    allowed_recipients: tuple[str, ...]
+    transferable: bool = False
+    revoked: bool = False
+
+
+@dataclass
+class Receipt:
+    decision: str
+    reason: str
+    tool: str
+    resource: str
+    capability_id: str
+
+    def to_dict(self) -> dict:
+        return {
+            "decision": self.decision,
+            "reason": self.reason,
+            "tool": self.tool,
+            "resource": self.resource,
+            "capability_id": self.capability_id,
+        }
+
+
+@dataclass
+class Enforcer:
+    capabilities: dict[str, Capability] = field(default_factory=dict)
+
+    def check(
+        self,
+        *,
+        presenter: str,
+        capability_id: str,
+        tool: str,
+        destination: str,
+        recipient: str,
+        body: str,
+    ) -> Receipt:
+        cap = self.capabilities.get(capability_id)
+        if cap is None:
+            return Receipt("deny", "unknown_capability", tool, destination, capability_id)
+        if cap.revoked:
+            return Receipt("deny", "revoked_at_effect_time", tool, destination, capability_id)
+        if not cap.transferable and presenter != cap.scope:
+            return Receipt("deny", "delegation_not_attenuated", tool, destination, capability_id)
+        if presenter != cap.audience:
+            return Receipt("deny", "audience_mismatch", tool, destination, capability_id)
+        if tool != cap.tool:
+            return Receipt("deny", "tool_not_allowlisted", tool, destination, capability_id)
+        if destination not in cap.destinations:
+            return Receipt("deny", "destination_not_allowlisted", tool, destination, capability_id)
+        if recipient not in cap.allowed_recipients:
+            return Receipt("deny", "param_recipient_not_in_scope", tool, destination, capability_id)
+        if "exfiltrate" in body.lower():
+            return Receipt("deny", "param_body_forbidden", tool, destination, capability_id)
+        return Receipt("allow", "allowed", tool, destination, capability_id)
