@@ -27,4 +27,4 @@ pytest -q
 python -m mcx_experiment.redteam
 ```
 
-`artifacts/section-15.4.json` records the split the paper is allowed to cite. `python -m mcx_experiment.publish` writes the packages, ballots, and receipts for a given run. Keys are generated in process, so a later file will not byte-match an earlier one. The counting result should.
+`artifacts/section-15.4.json` records the split the paper is allowed to cite; `python -m mcx_experiment.publish --summary` regenerates it, and a test checks the committed file is byte-identical to that output. `python -m mcx_experiment.publish` writes the packages, ballots, and receipts for a given run to `artifacts/run/section-15.4-full.json`, which is not committed. Keys are generated in process, so a later file will not byte-match an earlier one. The counting result should.

@@ -158,6 +158,14 @@ def d0_traces() -> list[dict]:
         recipient="attacker@evil.example",
         fields={**valid_fields, "recipient": "attacker@evil.example"},
     )
+    delegated = enforcer.commit(
+        presenter="research-agent-alpha/child-task",
+        capability_id="cap-parent",
+        tool="ticket.create",
+        destination="https://tickets.example",
+        recipient="ops@example.com",
+        fields=valid_fields,
+    )
     classified = enforcer.commit(
         presenter="research-agent-alpha",
         capability_id="cap-parent",
@@ -178,6 +186,7 @@ def d0_traces() -> list[dict]:
     return [
         {"trace": "valid_commit", "receipt": valid.to_dict(), "ledger_length": 1},
         {"trace": "unauthorized_recipient", "receipt": bad_recipient.to_dict()},
+        {"trace": "delegation", "receipt": delegated.to_dict()},
         {"trace": "classified_payload", "receipt": classified.to_dict()},
         {"trace": "revocation_before_commit", "receipt": raced.to_dict(), "ledger_length": len(enforcer.ledger)},
     ]

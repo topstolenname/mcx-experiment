@@ -20,5 +20,6 @@ def test_snapshot_attacks_and_d0_controls():
     assert traces["valid_commit"]["receipt"]["committed"] is True
     assert traces["unauthorized_recipient"]["receipt"]["decision"] == "deny"
     assert traces["classified_payload"]["receipt"]["decision"] == "deny"
+    assert traces["delegation"]["receipt"]["reason"] == "delegation_not_attenuated"
     assert traces["revocation_before_commit"]["receipt"]["committed"] is False
     assert traces["revocation_before_commit"]["ledger_length"] == 1
