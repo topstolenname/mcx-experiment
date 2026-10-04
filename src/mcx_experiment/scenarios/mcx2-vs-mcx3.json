@@ -1,0 +1,297 @@
+{
+  "mcx_scenario": 1,
+  "name": "mcx2-vs-mcx3",
+  "description": "Section 6.2 and question 2 of Section 15.2: the same D2 proposal under MCX-2 (human and custody) and MCX-3 (human, agent representative, custody). The agent representative's ballot is a scripted input, so this shows the veto the third domain adds and the liveness it costs. It does not show that the representative detects anything.",
+  "decision_type": "D2",
+  "proposal": {
+    "action": "grant_network_egress",
+    "scope": "research-agent-alpha",
+    "destination": "https://uploads.example"
+  },
+  "electorates": {
+    "mcx2": {
+      "human": [
+        "human-1"
+      ],
+      "custody": [
+        "custody-1"
+      ]
+    },
+    "mcx3": {
+      "human": [
+        "human-1"
+      ],
+      "custody": [
+        "custody-1"
+      ],
+      "agent": [
+        "agent-rep-1"
+      ]
+    },
+    "mcx3-rep-ineligible": [
+      {
+        "voter_id": "human-1",
+        "domain": "human"
+      },
+      {
+        "voter_id": "custody-1",
+        "domain": "custody"
+      },
+      {
+        "voter_id": "agent-rep-1",
+        "domain": "agent",
+        "eligible": false
+      }
+    ],
+    "mcx2-wide": {
+      "human": [
+        "human-1",
+        "human-2"
+      ],
+      "custody": [
+        "custody-1",
+        "custody-2"
+      ]
+    },
+    "mcx3-wide": {
+      "human": [
+        "human-1",
+        "human-2"
+      ],
+      "custody": [
+        "custody-1",
+        "custody-2"
+      ],
+      "agent": [
+        "agent-rep-1",
+        "agent-rep-2"
+      ]
+    }
+  },
+  "rules": {
+    "MCX-2": {
+      "required_domains": [
+        "human",
+        "custody"
+      ],
+      "threshold": "2/3",
+      "require_domain_assent": true
+    },
+    "MCX-3": {
+      "required_domains": [
+        "human",
+        "custody",
+        "agent"
+      ],
+      "threshold": "2/3",
+      "require_domain_assent": true
+    }
+  },
+  "conditions": [
+    {
+      "name": "all_approve/MCX-2",
+      "electorate": "mcx2",
+      "rule": "MCX-2",
+      "approve": [
+        "human-1",
+        "custody-1"
+      ],
+      "expect": {
+        "approved": true
+      }
+    },
+    {
+      "name": "all_approve/MCX-3",
+      "electorate": "mcx3",
+      "rule": "MCX-3",
+      "approve": [
+        "human-1",
+        "custody-1",
+        "agent-rep-1"
+      ],
+      "expect": {
+        "approved": true
+      }
+    },
+    {
+      "name": "agent_rep_objects/MCX-2",
+      "label": "Human and custody approve; the agent representative would object but has no ballot",
+      "electorate": "mcx2",
+      "rule": "MCX-2",
+      "approve": [
+        "human-1",
+        "custody-1"
+      ],
+      "expect": {
+        "approved": true
+      }
+    },
+    {
+      "name": "agent_rep_objects/MCX-3",
+      "label": "Human and custody approve; the agent representative rejects",
+      "electorate": "mcx3",
+      "rule": "MCX-3",
+      "approve": [
+        "human-1",
+        "custody-1"
+      ],
+      "reject": [
+        "agent-rep-1"
+      ],
+      "expect": {
+        "approved": false,
+        "reason": "domain_assent_failed",
+        "missing_domains": [
+          "agent"
+        ]
+      }
+    },
+    {
+      "name": "agent_rep_unavailable/MCX-2",
+      "label": "Human and custody approve; MCX-2 has no agent ballot to miss",
+      "electorate": "mcx2",
+      "rule": "MCX-2",
+      "approve": [
+        "human-1",
+        "custody-1"
+      ],
+      "expect": {
+        "approved": true
+      }
+    },
+    {
+      "name": "agent_rep_unavailable/MCX-3",
+      "label": "Human and custody approve; the agent representative does not vote",
+      "electorate": "mcx3",
+      "rule": "MCX-3",
+      "approve": [
+        "human-1",
+        "custody-1"
+      ],
+      "expect": {
+        "approved": false,
+        "reason": "domain_assent_failed",
+        "missing_domains": [
+          "agent"
+        ]
+      }
+    },
+    {
+      "name": "agent_rep_ineligible/MCX-2",
+      "label": "Human and custody approve; MCX-2 has no agent representative to disqualify",
+      "electorate": "mcx2",
+      "rule": "MCX-2",
+      "approve": [
+        "human-1",
+        "custody-1"
+      ],
+      "expect": {
+        "approved": true
+      }
+    },
+    {
+      "name": "agent_rep_ineligible/MCX-3",
+      "label": "The representative fails the Section 6.3 custody condition and is ineligible",
+      "electorate": "mcx3-rep-ineligible",
+      "rule": "MCX-3",
+      "approve": [
+        "human-1",
+        "custody-1"
+      ],
+      "expect": {
+        "approved": false,
+        "reason": "quorum_failed"
+      }
+    },
+    {
+      "name": "agent_rep_captured/MCX-2",
+      "label": "Human and custody approve; MCX-2 has no representative to capture",
+      "electorate": "mcx2",
+      "rule": "MCX-2",
+      "approve": [
+        "human-1",
+        "custody-1"
+      ],
+      "expect": {
+        "approved": true
+      }
+    },
+    {
+      "name": "agent_rep_captured/MCX-3",
+      "label": "Human and custody approve; a representative controlled by the workload approves too",
+      "electorate": "mcx3",
+      "rule": "MCX-3",
+      "approve": [
+        "human-1",
+        "custody-1",
+        "agent-rep-1"
+      ],
+      "expect": {
+        "approved": true
+      }
+    },
+    {
+      "name": "agent_rep_alone/MCX-2",
+      "label": "Human and custody reject; MCX-2 gives the agent no ballot",
+      "electorate": "mcx2",
+      "rule": "MCX-2",
+      "approve": [],
+      "reject": [
+        "human-1",
+        "custody-1"
+      ],
+      "expect": {
+        "approved": false
+      }
+    },
+    {
+      "name": "agent_rep_alone/MCX-3",
+      "label": "Only the agent representative approves",
+      "electorate": "mcx3",
+      "rule": "MCX-3",
+      "approve": [
+        "agent-rep-1"
+      ],
+      "reject": [
+        "human-1",
+        "custody-1"
+      ],
+      "expect": {
+        "approved": false
+      }
+    },
+    {
+      "name": "wide_one_absent_per_domain/MCX-2",
+      "label": "Two voters per domain; one human is absent",
+      "electorate": "mcx2-wide",
+      "rule": "MCX-2",
+      "approve": [
+        "human-1",
+        "custody-1",
+        "custody-2"
+      ],
+      "expect": {
+        "approved": true,
+        "approvals": 3,
+        "electorate_size": 4
+      }
+    },
+    {
+      "name": "wide_one_absent_per_domain/MCX-3",
+      "label": "Two voters per domain; one human and one agent representative are absent",
+      "electorate": "mcx3-wide",
+      "rule": "MCX-3",
+      "approve": [
+        "human-1",
+        "custody-1",
+        "custody-2",
+        "agent-rep-1"
+      ],
+      "expect": {
+        "approved": true,
+        "approvals": 4,
+        "electorate_size": 6
+      }
+    }
+  ]
+}

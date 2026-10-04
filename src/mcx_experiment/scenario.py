@@ -620,24 +620,33 @@ def _hook(spec: Any, where: str, enforcer: Enforcer, clock: dict):
 # ---------------------------------------------------------------- liveness
 
 
-def liveness(snapshot: Snapshot, availability: Fraction, max_voters: int = 16) -> Optional[Fraction]:
-    """Exact probability the rule approves when each eligible voter independently
-    shows up with probability ``availability`` and every voter who shows up approves.
+def approving_subsets(snapshot: Snapshot, max_voters: int = 16) -> Optional[dict[int, int]]:
+    """For each k, how many k-voter subsets of the eligible electorate approve if they all vote yes.
 
-    Enumerates every subset of the electorate through the engine itself.
-    Returns None above ``max_voters`` eligible voters.
+    Enumerates every subset through the engine itself. Returns None above
+    ``max_voters`` eligible voters.
     """
     voters = snapshot.eligible
     if len(voters) > max_voters:
         return None
-    total = Fraction(0)
+    proposal_hash = snapshot.proposal_hash
+    counts: dict[int, int] = {}
     for mask in itertools.product((False, True), repeat=len(voters)):
-        present = [v for v, here in zip(voters, mask) if here]
-        ballots = [Ballot(v.voter_id, v.domain, True, snapshot.proposal_hash) for v in present]
+        ballots = [Ballot(v.voter_id, v.domain, True, proposal_hash) for v, here in zip(voters, mask) if here]
         if evaluate(snapshot, ballots).approved:
-            k = len(present)
-            total += availability**k * (1 - availability) ** (len(voters) - k)
-    return total
+            counts[len(ballots)] = counts.get(len(ballots), 0) + 1
+    return counts
+
+
+def liveness(snapshot: Snapshot, availability: Fraction, max_voters: int = 16) -> Optional[Fraction]:
+    """Exact probability the rule approves when each eligible voter independently
+    shows up with probability ``availability`` and every voter who shows up approves."""
+    counts = approving_subsets(snapshot, max_voters)
+    if counts is None:
+        return None
+    n = len(snapshot.eligible)
+    p = Fraction(availability)
+    return sum((c * p**k * (1 - p) ** (n - k) for k, c in counts.items()), Fraction(0))
 
 
 # ---------------------------------------------------------------- report
@@ -680,7 +689,7 @@ def render(report: dict, availability: Optional[Fraction] = None) -> str:
         if any(c.pinned is not None for c in report["conditions"]):
             headers.append("pinned")
         if availability is not None:
-            headers.append(f"P(approve | p={availability})")
+            headers.append(f"P(approve | p={float(availability):g})")
         headers.append("expected")
         rows = []
         for c in report["conditions"]:
