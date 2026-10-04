@@ -11,6 +11,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from enum import Enum
+from fractions import Fraction
 from typing import Iterable
 
 
@@ -29,6 +30,8 @@ DEFAULT_THRESHOLDS = {
     DecisionType.D4: 0.75,
 }
 
+MIN_REQUIRED_DOMAINS = 2
+
 
 def canonical(payload: dict) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -36,6 +39,13 @@ def canonical(payload: dict) -> bytes:
 
 def content_hash(payload: dict) -> str:
     return hashlib.sha256(canonical(payload)).hexdigest()
+
+
+def meets_threshold(approvals: int, electorate_size: int, threshold: float) -> bool:
+    """Exact rational comparison; avoids float rounding at the boundary."""
+    if electorate_size <= 0:
+        return False
+    return Fraction(approvals, electorate_size) >= Fraction(threshold).limit_denominator(10_000)
 
 
 @dataclass(frozen=True)
@@ -122,13 +132,20 @@ class Approval:
 
 
 def last_ballots(ballots: Iterable[Ballot], proposal_hash: str) -> dict[str, Ballot]:
+    """Latest ballot per voter. Conflicting ballots at the same sequence void the voter."""
     chosen: dict[str, Ballot] = {}
+    conflicted: set[str] = set()
     for ballot in ballots:
         if ballot.proposal_hash != proposal_hash:
             continue
         current = chosen.get(ballot.voter_id)
-        if current is None or ballot.sequence >= current.sequence:
+        if current is None or ballot.sequence > current.sequence:
             chosen[ballot.voter_id] = ballot
+            conflicted.discard(ballot.voter_id)
+        elif ballot.sequence == current.sequence and ballot.approve != current.approve:
+            conflicted.add(ballot.voter_id)
+    for voter_id in conflicted:
+        chosen.pop(voter_id, None)
     return chosen
 
 
@@ -151,11 +168,23 @@ def evaluate(snapshot: Snapshot, ballots: Iterable[Ballot]) -> Approval:
         domain: any(b.domain == domain for b in approvals)
         for domain in snapshot.required_domains
     }
-    threshold_met = ratio >= snapshot.threshold
+    threshold_met = meets_threshold(len(approvals), electorate_size, snapshot.threshold)
+    domains_configured = (
+        not snapshot.require_domain_assent
+        or len(set(snapshot.required_domains)) >= MIN_REQUIRED_DOMAINS
+    )
     domain_ok = all(assent.values()) if snapshot.require_domain_assent else True
-    approved = quorum and threshold_met and domain_ok and electorate_size > 0
+    approved = (
+        domains_configured
+        and quorum
+        and threshold_met
+        and domain_ok
+        and electorate_size > 0
+    )
     if approved:
         reason = "approved"
+    elif not domains_configured:
+        reason = "insufficient_required_domains"
     elif not quorum:
         reason = "quorum_failed"
     elif snapshot.require_domain_assent and not all(assent.values()):
